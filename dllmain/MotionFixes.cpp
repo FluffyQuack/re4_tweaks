@@ -44,8 +44,13 @@
 //       from the blend.
 //  5 -> While a motion doesn't advance (paused, or held at its end), there's no blend: the saved matrices would leave the
 //       model behind. Made Ada's bow gun float in space after firing.
+//  6 -> Cuts: a part that turns by a lot within one whole frame, out of almost no motion (the rifle reloads flip parts 4,
+//       5 and 8 by 126-175 degrees in one frame as the magazine comes out and goes back), is a cut, not a movement, and
+//       any in-between shows it half flipped. Those parts, and everything hanging off them, keep the previous whole frame's
+//       pose relative to their parent (what the 30fps lock shows) until the next one. Telling them from fast movement needs
+//       the previous step too: part 8 spins at up to 140 degrees per frame in the same reloads, and must keep blending.
 //
-// Steps 1 and 2 apply to every motion. Steps 3 to 5 only to QLOC's flagged ones.
+// Steps 1 and 2 apply to every motion. Steps 3 to 6 only to QLOC's flagged ones.
 
 // HERMITE_SET
 struct HermiteSet
@@ -278,6 +283,9 @@ struct MotionWorldBlend
 	cCoord* ref = nullptr;   // What the matrices are relative to (nullptr: world)
 	std::vector<MotionMtx> cur;
 	std::vector<MotionMtx> prev;
+	bool hasStep = false;
+	std::vector<float> step;     // Each part's turn from prev to cur, relative to its parent (degrees)
+	std::vector<float> lastStep; // The same, one whole frame earlier (0 when unknown)
 };
 
 static std::unordered_map<cModel*, MotionWorldBlend> s_worldBlends;
@@ -418,6 +426,84 @@ static bool MotionWorldBlend_invert(const float m[3][4], float out[3][4])
 	return true;
 }
 
+// The rotation between two matrices (scale removed), in degrees
+static float MotionWorldBlend_angle(const MotionMtx& a, const MotionMtx& b)
+{
+	float ra[3][3], rb[3][3], s[3], tr[3];
+	if (!MotionWorldBlend_split(a, ra, s, tr) || !MotionWorldBlend_split(b, rb, s, tr))
+		return 0.0f;
+
+	// trace(Ra^T * Rb) = 1 + 2 cos(angle)
+	float trace = 0.0f;
+	for (int i = 0; i < 3; i++)
+		for (int j = 0; j < 3; j++)
+			trace += ra[j][i] * rb[j][i];
+	float c = (trace - 1.0f) * 0.5f;
+	c = c > 1.0f ? 1.0f : (c < -1.0f ? -1.0f : c);
+	return std::acos(c) * (180.0f / c_pi);
+}
+
+// Part i of "mats" relative to its parent part (or as it is, for the model's root parts)
+static void MotionWorldBlend_local(const std::vector<MotionMtx>& mats, const std::vector<int>& parent, size_t i, MotionMtx& out)
+{
+	float inv[3][4];
+	if (parent[i] < 0 || !MotionWorldBlend_invert(mats[parent[i]].m, inv))
+	{
+		out = mats[i];
+		return;
+	}
+	MotionWorldBlend_mul(inv, mats[i].m, out.m);
+}
+
+// A cut, not a movement: a big turn within one whole frame, much bigger than the one before it. Measured on the rifle
+// reloads (wep09 motions 0x22/0x25/0x26): cuts are 126-175 degrees out of 0-94 the frame before; part 8's spin reaches
+// 140 degrees at no more than 1.5 times the frame before. A turn of 150 degrees or more is ambiguous as a slerp anyway.
+static bool MotionWorldBlend_isCut(float step, float lastStep)
+{
+	return step >= 150.0f || (step > 90.0f && step > lastStep * 1.7f);
+}
+
+struct MotionWorldBlendOut
+{
+	const MotionWorldBlend* blend;
+	const std::vector<int>* parent;
+	float t;
+	std::vector<char> snap; // Keeps prev relative to its parent (a cut, or hangs off one)
+	std::vector<char> done;
+	std::vector<MotionMtx> out;
+};
+
+// Part i's blended matrix (relative to the blend's ref), its parent's first
+static void MotionWorldBlend_outPart(MotionWorldBlendOut& o, size_t i)
+{
+	if (o.done[i])
+		return;
+	o.done[i] = 1;
+
+	const MotionWorldBlend& blend = *o.blend;
+	const int parent = (*o.parent)[i];
+	if (parent >= 0)
+	{
+		MotionWorldBlend_outPart(o, parent);
+		if (o.snap[parent])
+			o.snap[i] = 1;
+	}
+
+	if (!o.snap[i])
+	{
+		MotionWorldBlend_blend(blend.prev[i], blend.cur[i], o.t, o.out[i].m);
+		return;
+	}
+
+	// The previous whole frame's pose, relative to where its parent is now
+	MotionMtx local;
+	MotionWorldBlend_local(blend.prev, *o.parent, i, local);
+	if (parent >= 0)
+		MotionWorldBlend_mul(o.out[parent].m, local.m, o.out[i].m);
+	else
+		o.out[i] = local;
+}
+
 // One model posed at a whole frame this update: keeps its parts' matrices at the last two whole frames, relative to
 // "ref", and replaces them with the blend at the actual frame
 static void MotionWorldBlend_model(cModel* pEm, cCoord* ref)
@@ -442,19 +528,20 @@ static void MotionWorldBlend_model(cModel* pEm, cCoord* ref)
 	{
 		blend.pMot = info.fcvDataPtr_0;
 		blend.ref = ref;
-		blend.hasCur = blend.hasPrev = false;
+		blend.hasCur = blend.hasPrev = blend.hasStep = false;
 		blend.cur.resize(n);
 		blend.prev.resize(n);
 	}
 
 	// The next whole frame: the current one becomes the previous one
+	bool nextFrame = false;
 	if (blend.hasCur && whole == blend.curFrame + 1.0f)
 	{
 		blend.prev.swap(blend.cur);
-		blend.hasPrev = true;
+		blend.hasPrev = nextFrame = true;
 	}
 	else if (!blend.hasCur || whole != blend.curFrame)
-		blend.hasPrev = false;
+		blend.hasPrev = blend.hasStep = false;
 
 	size_t i = 0;
 	for (cParts* p = pEm->childParts_F4; p; p = p->nextParts_F4, i++)
@@ -467,23 +554,70 @@ static void MotionWorldBlend_model(cModel* pEm, cCoord* ref)
 	blend.curFrame = whole;
 	blend.hasCur = true;
 
+	// Each part's parent among the model's own parts (-1: the model, or another model's part)
+	std::vector<int> parent(n, -1);
+	{
+		std::unordered_map<const cCoord*, int> index;
+		i = 0;
+		for (cParts* p = pEm->childParts_F4; p; p = p->nextParts_F4, i++)
+			index[p] = (int)i;
+		i = 0;
+		for (cParts* p = pEm->childParts_F4; p; p = p->nextParts_F4, i++)
+		{
+			auto it = index.find(p->pParent_6C);
+			if (it != index.end() && it->second != (int)i)
+				parent[i] = it->second;
+		}
+	}
+
+	// Each part's turn over this whole frame, and the one before (for telling cuts from fast movement)
+	if (nextFrame)
+	{
+		if (blend.hasStep)
+			blend.lastStep.swap(blend.step);
+		else
+			blend.lastStep.assign(n, 0.0f);
+		blend.step.resize(n);
+		for (i = 0; i < n; i++)
+		{
+			MotionMtx a, b;
+			MotionWorldBlend_local(blend.prev, parent, i, a);
+			MotionWorldBlend_local(blend.cur, parent, i, b);
+			blend.step[i] = MotionWorldBlend_angle(a, b);
+		}
+		blend.hasStep = true;
+	}
+
 	// Held (paused, or stopped at the end): the pose as it is
 	const bool advanced = frame != blend.lastFrame;
 	blend.lastFrame = frame;
 	if (!advanced)
-		blend.hasPrev = false;
+		blend.hasPrev = blend.hasStep = false;
 
 	// At a whole frame (or without the previous one), the pose as it is
 	const float t = frame - (whole - 1.0f);
-	if (!blend.hasPrev || t >= 1.0f)
+	if (!blend.hasPrev || !blend.hasStep || t >= 1.0f)
 		return;
+
+	MotionWorldBlendOut o;
+	o.blend = &blend;
+	o.parent = &parent;
+	o.t = t;
+	o.snap.resize(n);
+	o.done.assign(n, 0);
+	o.out.resize(n);
+	for (i = 0; i < n; i++)
+		o.snap[i] = MotionWorldBlend_isCut(blend.step[i], blend.lastStep[i]);
+	for (i = 0; i < n; i++)
+		MotionWorldBlend_outPart(o, i);
 
 	i = 0;
 	for (cParts* p = pEm->childParts_F4; p; p = p->nextParts_F4, i++)
 	{
-		MotionWorldBlend_blend(blend.prev[i], blend.cur[i], t, p->mat_C);
 		if (ref)
-			MotionWorldBlend_mul(ref->mat_C, p->mat_C, p->mat_C);
+			MotionWorldBlend_mul(ref->mat_C, o.out[i].m, p->mat_C);
+		else
+			std::memcpy(p->mat_C, o.out[i].m, sizeof(MotionMtx));
 		p->world_70.x = p->mat_C[0][3];
 		p->world_70.y = p->mat_C[1][3];
 		p->world_70.z = p->mat_C[2][3];
