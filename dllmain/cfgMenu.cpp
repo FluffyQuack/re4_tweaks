@@ -1794,6 +1794,61 @@ void cfgMenuRender()
 						ImGui::TextWrapped("Updates the silenced handgun's item description to only mention increased critical hit chance when the handgun is fully upgraded.");
 					}
 
+					// AshleyBustPhysicsStrength / AshleyBustSize
+					if ((OptionsFilter.PassFilter("AshleyBustPhysicsStrength AshleyBustSize AshleyBustJigglePhysics") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						ImGui::TextWrapped("Ashley's bust");
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("AshleyBustPhysicsStrength: how strongly Ashley's bust bounces while she moves. 0 disables it, 1 is the game's default.");
+						ImGui::TextWrapped("With jiggle physics enabled, this scales how far it travels instead.");
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Physics strength").x);
+						re4t::cfg->HasUnsavedChanges |= ImGui::SliderFloat("Physics strength", &re4t::cfg->fAshleyBustPhysicsStrength, 0.0f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::PopItemWidth();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("AshleyBustSize: scales the size of Ashley's bust. 1 is the game's default.");
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Physics strength").x);
+						re4t::cfg->HasUnsavedChanges |= ImGui::SliderFloat("Size", &re4t::cfg->fAshleyBustSize, 0.5f, 2.5f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::PopItemWidth();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("AshleyBustJigglePhysics", &re4t::cfg->bAshleyBustJigglePhysics);
+						ImGui::TextWrapped("Replaces the game's bounce with spring physics: any movement of her body sets it wobbling, and it keeps going for as long as \"Wobble duration\".");
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+
+						ImGui::BeginDisabled(!re4t::cfg->bAshleyBustJigglePhysics);
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Wobble duration (s)").x);
+						re4t::cfg->HasUnsavedChanges |= ImGui::SliderFloat("Wobble speed (Hz)", &re4t::cfg->fAshleyBustJiggleSpeed, 0.5f, 8.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+						re4t::cfg->HasUnsavedChanges |= ImGui::SliderFloat("Wobble duration (s)", &re4t::cfg->fAshleyBustJiggleDuration, 0.2f, 15.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+						re4t::cfg->HasUnsavedChanges |= ImGui::SliderFloat("Max travel", &re4t::cfg->fAshleyBustJiggleMaxTravel, 2.0f, 80.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::PopItemWidth();
+						ImGui::EndDisabled();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						if (ImGui::Button("Reset to defaults"))
+						{
+							re4t::cfg->fAshleyBustPhysicsStrength = 1.0f;
+							re4t::cfg->fAshleyBustSize = 1.0f;
+							re4t::cfg->bAshleyBustJigglePhysics = false;
+							re4t::cfg->fAshleyBustJiggleSpeed = 2.5f;
+							re4t::cfg->fAshleyBustJiggleDuration = 4.0f;
+							re4t::cfg->fAshleyBustJiggleMaxTravel = 25.0f;
+							re4t::cfg->HasUnsavedChanges = true;
+						}
+					}
+
 					// EnableDebugMenu
 					if ((OptionsFilter.PassFilter("EnableDebugMenu") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
 					{

@@ -143,6 +143,12 @@ public:
 	bool bSpeedUpQuitGame = true;
 	bool bAlwaysShowOriginalTitleBackground = false;
 	bool bFixSilencedHandgunDescription = true;
+	float fAshleyBustPhysicsStrength = 1.0f;
+	float fAshleyBustSize = 1.0f;
+	bool bAshleyBustJigglePhysics = false;
+	float fAshleyBustJiggleSpeed = 2.5f;
+	float fAshleyBustJiggleDuration = 4.0f;
+	float fAshleyBustJiggleMaxTravel = 25.0f;
 	bool bEnableDebugMenu = false;
 	bool bShowGameOutput = false;
 	bool bSaveGameOutput = false;

@@ -97,6 +97,9 @@
     <ClCompile Include="Misc.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
+    <ClCompile Include="AshleyBust.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
     <ClCompile Include="DisplayTweaks.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>

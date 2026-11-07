@@ -14,6 +14,7 @@ namespace re4t
 	namespace init
 	{
 		// Init functions
+		void AshleyBust();
 		void AspectRatioTweaks();
 		void AudioTweaks();
 		void CameraTweaks();

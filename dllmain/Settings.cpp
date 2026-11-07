@@ -282,6 +282,17 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		re4t::cfg->bAlwaysShowOriginalTitleBackground = ini.getBool("MISC", "AlwaysShowOriginalTitleBackground", re4t::cfg->bAlwaysShowOriginalTitleBackground);
 		re4t::cfg->bHideZoomControlHints = ini.getBool("MISC", "HideZoomControlHints", re4t::cfg->bHideZoomControlHints);
 		re4t::cfg->bFixSilencedHandgunDescription = ini.getBool("MISC", "FixSilencedHandgunDescription", re4t::cfg->bFixSilencedHandgunDescription);
+		re4t::cfg->fAshleyBustPhysicsStrength = ini.getFloat("MISC", "AshleyBustPhysicsStrength", re4t::cfg->fAshleyBustPhysicsStrength);
+		re4t::cfg->fAshleyBustPhysicsStrength = fmin(fmax(re4t::cfg->fAshleyBustPhysicsStrength, 0.0f), 5.0f); // limit between 0.0 - 5.0
+		re4t::cfg->fAshleyBustSize = ini.getFloat("MISC", "AshleyBustSize", re4t::cfg->fAshleyBustSize);
+		re4t::cfg->fAshleyBustSize = fmin(fmax(re4t::cfg->fAshleyBustSize, 0.5f), 2.5f); // limit between 0.5 - 2.5
+		re4t::cfg->bAshleyBustJigglePhysics = ini.getBool("MISC", "AshleyBustJigglePhysics", re4t::cfg->bAshleyBustJigglePhysics);
+		re4t::cfg->fAshleyBustJiggleSpeed = ini.getFloat("MISC", "AshleyBustJiggleSpeed", re4t::cfg->fAshleyBustJiggleSpeed);
+		re4t::cfg->fAshleyBustJiggleSpeed = fmin(fmax(re4t::cfg->fAshleyBustJiggleSpeed, 0.5f), 8.0f); // limit between 0.5 - 8.0
+		re4t::cfg->fAshleyBustJiggleDuration = ini.getFloat("MISC", "AshleyBustJiggleDuration", re4t::cfg->fAshleyBustJiggleDuration);
+		re4t::cfg->fAshleyBustJiggleDuration = fmin(fmax(re4t::cfg->fAshleyBustJiggleDuration, 0.2f), 15.0f); // limit between 0.2 - 15.0
+		re4t::cfg->fAshleyBustJiggleMaxTravel = ini.getFloat("MISC", "AshleyBustJiggleMaxTravel", re4t::cfg->fAshleyBustJiggleMaxTravel);
+		re4t::cfg->fAshleyBustJiggleMaxTravel = fmin(fmax(re4t::cfg->fAshleyBustJiggleMaxTravel, 2.0f), 80.0f); // limit between 2.0 - 80.0
 
 		// MEMORY
 		re4t::cfg->bAllowHighResolutionSFD = ini.getBool("MEMORY", "AllowHighResolutionSFD", re4t::cfg->bAllowHighResolutionSFD);
@@ -726,6 +737,12 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setBool("MISC", "SaveGameOutput", re4t::cfg->bSaveGameOutput);
 		ini.setBool("MISC", "HideZoomControlHints", re4t::cfg->bHideZoomControlHints);
 		ini.setBool("MISC", "FixSilencedHandgunDescription", re4t::cfg->bFixSilencedHandgunDescription);
+		ini.setFloat("MISC", "AshleyBustPhysicsStrength", re4t::cfg->fAshleyBustPhysicsStrength);
+		ini.setFloat("MISC", "AshleyBustSize", re4t::cfg->fAshleyBustSize);
+		ini.setBool("MISC", "AshleyBustJigglePhysics", re4t::cfg->bAshleyBustJigglePhysics);
+		ini.setFloat("MISC", "AshleyBustJiggleSpeed", re4t::cfg->fAshleyBustJiggleSpeed);
+		ini.setFloat("MISC", "AshleyBustJiggleDuration", re4t::cfg->fAshleyBustJiggleDuration);
+		ini.setFloat("MISC", "AshleyBustJiggleMaxTravel", re4t::cfg->fAshleyBustJiggleMaxTravel);
 		// Not writing EnableModExpansion / ForceETSApplyScale back to users INI in case those were enabled by a mod override INI (which the user might want to remove later)
 		// We don't have any UI options for those anyway, so pointless for us to write it back
 
@@ -1087,6 +1104,12 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "AlwaysShowOriginalTitleBg", re4t::cfg->bAlwaysShowOriginalTitleBackground ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "HideZoomControlHints", re4t::cfg->bHideZoomControlHints ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "FixSilencedHandgunDescription", re4t::cfg->bFixSilencedHandgunDescription ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustPhysicsStrength", re4t::cfg->fAshleyBustPhysicsStrength);
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustSize", re4t::cfg->fAshleyBustSize);
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustJigglePhysics", re4t::cfg->bAshleyBustJigglePhysics ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustJiggleSpeed", re4t::cfg->fAshleyBustJiggleSpeed);
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustJiggleDuration", re4t::cfg->fAshleyBustJiggleDuration);
+	spd::log()->info("| {:<30} | {:>15} |", "AshleyBustJiggleMaxTravel", re4t::cfg->fAshleyBustJiggleMaxTravel);
 	spd::log()->info("+--------------------------------+-----------------+");
 
 	// MEMORY
