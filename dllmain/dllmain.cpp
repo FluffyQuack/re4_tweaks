@@ -109,6 +109,8 @@ void Init_Main()
 
 	re4t::init::AshleyBust();
 
+	re4t::init::Ragdoll();
+
 	if (re4t::cfg->bEnableModExpansion)
 		re4t::init::ModExpansion();
 

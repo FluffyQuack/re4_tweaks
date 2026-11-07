@@ -42,6 +42,7 @@ namespace re4t
 		void ModExpansion();
 		void MultithreadFix();
 		void QTEfixes();
+		void Ragdoll();
 		void Sections();
 		void Sofdec();
 		void TitleMenu();

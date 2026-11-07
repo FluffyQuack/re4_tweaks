@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Jolt Physics settings shared by Jolt.vcxproj and every project that includes Jolt's headers (dllmain).
+
+  Jolt's JPH_* defines change class layouts and inline code, so the library and the code using it must be built with the
+  same ones (RegisterTypes / VerifyJoltVersionID check this at runtime). Keep every JPH_* define here, never in a single
+  project.
+
+  Left off on purpose: JPH_USE_SSE4_1/4_2, AVX, AVX2, LZCNT, TZCNT, F16C, FMADD (plain SSE2, so any CPU that runs the
+  game runs this), JPH_DEBUG_RENDERER, JPH_PROFILE_ENABLED, JPH_OBJECT_STREAM, JPH_FLOATING_POINT_EXCEPTIONS_ENABLED,
+  JPH_USE_DX12/VK/MTL/CPU_COMPUTE.
+-->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <JoltRoot>$(MSBuildThisFileDirectory)..\external\JoltPhysics\</JoltRoot>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(JoltRoot);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <PreprocessorDefinitions>JPH_DEBUG;JPH_ENABLE_ASSERTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
