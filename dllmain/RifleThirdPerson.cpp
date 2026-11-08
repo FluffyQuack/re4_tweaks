@@ -24,14 +24,15 @@
 //    and shotgun's set states do) and the laser sight is drawn.
 //  - The rifle's raise carries a camera track (meant to lead into the scope); it's ignored, so the aim camera stays on.
 //  - The rifle's aim has no up / down motions (the scope did the pitch), so the upper body bends by the aim pitch:
-//    after cPlBody::move (waistMove) sets the waist twist on the spine parts 1 and 2, half the pitch is added to each
-//    one's extra rotation (inv_offset.x). Every pose computed after that includes it, the laser's and the rifle's too.
+//    right after the player's parts are computed (partsWorldCalc, in cPlayer::move and in setLaserSight, so the laser
+//    and the drawn rifle agree), the spine parts 1 and 2 and everything hanging off them turn, half each, about the
+//    level axis across the rifle's aim. (The spine's own x rotation, inv_offset, was tried first: in the rifle stance
+//    the torso is twisted, so that axis is slanted, and pitching also swung the body and the aim sideways.)
 
 namespace
 {
-	// How far the aim can pitch (m3r: -1..1 is -90..90 degrees), and how the upper body bends for it
+	// How far the aim can pitch (m3r: -1..1 is -90..90 degrees; positive is up)
 	constexpr float c_maxRate = 0.5f;          // 45 degrees either way
-	constexpr float c_bendSign = -1.0f;        // inv_offset.x for a positive m3r (aiming up)
 	constexpr float c_halfPi = 1.57079633f;
 
 	// Recoil: the upper body kicks up by this much on a shot and settles back over ~10 frames
@@ -49,12 +50,6 @@ namespace
 	constexpr uint32_t c_wepObj = 0x34;      // cPlWep::m_pWep (cObjWep*)
 	constexpr uint32_t c_wepPitch = 0x28;    // cPlWep::pitch (radians)
 
-	// cPlBody
-	constexpr uint32_t c_bodyModel = 0x38;
-
-	// cParts
-	constexpr uint32_t c_partsInvOffsetX = 0x128; // extra rotation (with motParts flags 0x40000000)
-
 	// GLOBAL_WK
 	constexpr uint32_t c_gWepArc = 0x44;     // the weapon's archive (motions)
 
@@ -68,7 +63,7 @@ namespace
 	DelayF* s_m3r = nullptr;
 	void* s_mot3 = nullptr;
 
-	float s_bend = 0.0f; // radians, the whole bend (half on each spine part)
+	float s_bend = 0.0f; // radians, the whole bend (half on each spine part), positive is up
 	float s_recoil = 0.0f; // radians, the recoil kick on top
 	uint32_t s_bendFrame = 0xFFFFFFFF;
 
@@ -314,7 +309,7 @@ namespace
 		const bool aiming = Active() && s_m3r && pl->r_no_0_FC == 0 && pl->r_no_1_FD == 6 && (r2 == 1 || r2 == 2 || r2 == 4 || r2 == 5);
 		if (aiming)
 		{
-			s_bend = c_bendSign * (std::clamp(s_m3r->val0, -c_maxRate, c_maxRate) * c_halfPi + s_recoil);
+			s_bend = std::clamp(s_m3r->val0, -c_maxRate, c_maxRate) * c_halfPi + s_recoil;
 			return;
 		}
 		s_recoil = 0.0f;
@@ -324,24 +319,88 @@ namespace
 			s_bend = 0.0f;
 	}
 
-	void(__fastcall* cPlBody_move)(void* body, void* edx, int a);
-	void __fastcall cPlBody_move_hook(void* body, void* edx, int a)
+	// Turns part `root` and everything hanging off it by `angle` about `axis` (unit, world space) through the part's
+	// position
+	void TurnSubtree(cModel* m, cParts* root, const Vec& axis, float angle)
 	{
-		cPlBody_move(body, edx, a);
+		const float c = cosf(angle), s = sinf(angle), t = 1.0f - c;
+		const float x = axis.x, y = axis.y, z = axis.z;
+		const float R[3][3] = {
+			{ t * x * x + c,     t * x * y - s * z, t * x * z + s * y },
+			{ t * x * y + s * z, t * y * y + c,     t * y * z - s * x },
+			{ t * x * z - s * y, t * y * z + s * x, t * z * z + c     },
+		};
+		const Vec pivot = root->world_70;
+		const float o[3] = { pivot.x, pivot.y, pivot.z };
 
-		cModel* m = *reinterpret_cast<cModel**>(reinterpret_cast<uint8_t*>(body) + c_bodyModel);
-		if (!m || m != reinterpret_cast<cModel*>(PlayerPtr()))
+		for (cParts* p = m->childParts_F4; p; p = p->nextParts_F4)
+		{
+			// Is root p itself or an ancestor of it?
+			bool under = false;
+			int guard = 0;
+			for (cCoord* q = p; q && q != m && guard < 64; q = static_cast<cParts*>(q)->pParent_6C, guard++)
+			{
+				if (q == root)
+				{
+					under = true;
+					break;
+				}
+			}
+			if (!under)
+				continue;
+
+			float rot[3][3];
+			for (int r = 0; r < 3; r++)
+				for (int k = 0; k < 3; k++)
+					rot[r][k] = R[r][0] * p->mat_C[0][k] + R[r][1] * p->mat_C[1][k] + R[r][2] * p->mat_C[2][k];
+			const float d[3] = { p->mat_C[0][3] - o[0], p->mat_C[1][3] - o[1], p->mat_C[2][3] - o[2] };
+			for (int r = 0; r < 3; r++)
+			{
+				for (int k = 0; k < 3; k++)
+					p->mat_C[r][k] = rot[r][k];
+				p->mat_C[r][3] = o[r] + R[r][0] * d[0] + R[r][1] * d[1] + R[r][2] * d[2];
+			}
+			p->world_70 = Vec(p->mat_C[0][3], p->mat_C[1][3], p->mat_C[2][3]);
+		}
+	}
+
+	// After the player's parts are computed: the upper body bends by the aim pitch, about the level axis across the
+	// rifle's aim (from the rifle's last pose; the player's facing if there's none)
+	void(__fastcall* cModel_partsWorldCalc)(cModel* m, void* edx); // the function itself (past its thunk)
+
+	// At cPlayer::move's and setLaserSight's calls
+	void __fastcall cModel_partsWorldCalc_hook(cModel* m, void* edx)
+	{
+		cModel_partsWorldCalc(m, edx);
+		if (m != reinterpret_cast<cModel*>(PlayerPtr()))
 			return;
 		UpdateBend(m);
 		if (s_bend == 0.0f)
 			return;
 
-		// waistMove has just set these (and their flags)
-		for (int idx : { 1, 2 })
+		Vec fwd(sinf(m->ang_A0.y), 0.0f, cosf(m->ang_A0.y));
+		if (cModel* wep = WeaponObject(m))
 		{
-			if (cParts* p = GetParts(m, idx))
-				*reinterpret_cast<float*>(reinterpret_cast<uint8_t*>(p) + c_partsInvOffsetX) += 0.5f * s_bend;
+			if (cParts* wp = wep->childParts_F4)
+			{
+				const Vec aim(-wp->mat_C[0][0], 0.0f, -wp->mat_C[2][0]);
+				if (aim.x * aim.x + aim.z * aim.z > 1e-6f)
+					fwd = aim;
+			}
 		}
+		const float len = sqrtf(fwd.x * fwd.x + fwd.z * fwd.z);
+		if (len < 1e-6f)
+			return;
+		// Turning by +angle about up x forward tips the aim down
+		const Vec axis(fwd.z / len, 0.0f, -fwd.x / len);
+
+		// The spine (1) and chest (2): the neck (3), head, arms and the rifle hang off the chest, the legs off part 0
+		cParts* spine = GetParts(m, 1);
+		cParts* chest = GetParts(m, 2);
+		if (spine)
+			TurnSubtree(m, spine, axis, -0.5f * s_bend);
+		if (chest)
+			TurnSubtree(m, chest, axis, -0.5f * s_bend);
 	}
 
 	template <typename T>
@@ -389,8 +448,10 @@ void re4t::init::RifleThirdPerson()
 		{ "set state", "0F B6 86 FF 00 00 00 8B 0C 85 ? ? ? ? 56 FF D1 83 C4 04 33 DB 53 53 53 8B CE E8 ? ? ? ? 39 9E 2C 04 00 00", 1 },
 		// The ready state's step table (+25)
 		{ "ready state", "81 88 24 50 00 00 00 20 00 00 53 56 8B 75 08 0F B6 86 FF 00 00 00 8B 0C 85 ? ? ? ? 56 FF D1 83 C4 04 E8 ? ? ? ? 85 C0 75 ? 80 BE FF 00 00 00 03 74 ? F6 86 68 04 00 00 40", 1 },
-		// cPlayer::setLaserSight: cPlBody::move (+14) is its first call
+		// cPlayer::setLaserSight: cPlBody::move (+14), then partsWorldCalc (+21)
 		{ "setLaserSight", "55 8B EC 56 8B F1 8B 8E E4 07 00 00 6A 00 E8 ? ? ? ? 8B CE E8 ? ? ? ? 8B 86 D8 07 00 00 8B 48 34 E8", 1 },
+		// cPlayer::move: moveMatCalcBefore (virtual), then partsWorldCalc (+9), partsFixAdjust, PartsWorldPosCalc
+		{ "player partsWorldCalc", "8B 42 4C 8B CE FF D0 8B CE E8 ? ? ? ? 8B CE E8 ? ? ? ? 56 E8", 1 },
 		// Fire step 0: setDisp(1, 0) (+4), hiding the rifle
 		{ "fire step 0", "6A 00 6A 01 E8 ? ? ? ? 8D 45 CC 50 8D BE 4C 04 00 00", 1 },
 		// CameraControl::Move: checkAttachCamera (+4)
@@ -410,6 +471,14 @@ void re4t::init::RifleThirdPerson()
 		f.at = pattern.get(0).get<uint8_t>(0);
 	}
 	auto at = [&finds](const char* what) { for (Find& f : finds) if (!strcmp(f.what, what)) return f.at; return (uint8_t*)nullptr; };
+
+	// cModel::partsWorldCalc's thunk (setLaserSight calls it through that, +21)
+	uint8_t* pwcThunk = injector::GetBranchDestination(at("setLaserSight") + 21).get<uint8_t>();
+	if (*pwcThunk != 0xE9)
+	{
+		spd::log()->error("{} -> partsWorldCalc's thunk isn't a jump, unscoped rifle third-person aim not applied", __FUNCTION__);
+		return;
+	}
 
 	// The routine's main table (ready, set, fire, down, reload, next): the weapon routines all dispatch alike, so it's
 	// the one whose set state holds the set-state code found above (at +0x15), and the fire state's step table comes
@@ -461,10 +530,11 @@ void re4t::init::RifleThirdPerson()
 	injector::WriteMemory<uint8_t>(mouseTbl + 9, 1, true);
 	injector::WriteMemory<uint8_t>(mouseTbl + 0xA, 1, true);
 
-	// cPlBody::move, through its thunk
-	uint8_t* bodyMoveThunk = injector::GetBranchDestination(at("setLaserSight") + 14).get<uint8_t>();
-	cPlBody_move = reinterpret_cast<decltype(cPlBody_move)>(injector::GetBranchDestination(bodyMoveThunk).get<void>());
-	InjectHook(bodyMoveThunk, cPlBody_move_hook, HookType::Jump);
+	// cModel::partsWorldCalc: the bend at cPlayer::move's and setLaserSight's calls (the others, MotionMove's, come
+	// before these in an update)
+	cModel_partsWorldCalc = reinterpret_cast<decltype(cModel_partsWorldCalc)>(injector::GetBranchDestination(pwcThunk).get<void>());
+	InjectHook(at("setLaserSight") + 21, cModel_partsWorldCalc_hook, HookType::Call);
+	InjectHook(at("player partsWorldCalc") + 9, cModel_partsWorldCalc_hook, HookType::Call);
 
 	spd::log()->info("{} -> unscoped rifle third-person aim hooks applied", __FUNCTION__);
 }
