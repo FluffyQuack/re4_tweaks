@@ -1246,6 +1246,18 @@ void cfgMenuRender()
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 						ImGui::TextWrapped("Makes looking around with the right stick reach as far on the diagonals as it does straight left, right, up and down, and uses one round deadzone instead of one per axis.");
 						ImGui::TextWrapped("Looking up and down also uses the stick's whole range instead of reaching the limit at half way.");
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("How far the camera turns at a full sideways push, in degrees (the vanilla game turns about 129).");
+
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Camera Turn Slider").x);
+						ImGui::BeginDisabled(!re4t::cfg->bCircularRightStickCamera);
+						ImGui::SliderFloat("Camera Turn Slider", &re4t::cfg->fCircularRightStickCameraTurn, 30.0f, 130.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::EndDisabled();
+						ImGui::PopItemWidth();
+
+						if (ImGui::IsItemEdited())
+							re4t::cfg->HasUnsavedChanges = true;
 					}
 
 					// AllowReloadWithoutAiming_controller

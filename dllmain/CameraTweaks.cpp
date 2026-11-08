@@ -318,11 +318,12 @@ void re4t::init::CameraTweaks()
 			{
 				*C_RANGE_1097 = fDefaultC_RANGE;
 
-				// X: a full push turns the camera as far as the vanilla one does (127, ~129 degrees). Y: a full push is the
-				// up/down limit (C_RANGE), where the vanilla one reached it at less than half way.
+				// X: a full push turns the camera by CircularRightStickCameraTurn degrees (the game turns 60 degrees per
+				// C_RANGE; the vanilla stick's 127 turns ~129). Y: a full push is the up/down limit (C_RANGE), where the
+				// vanilla one reached it at less than half way.
 				float x, y;
 				CircularRightStick(x, y);
-				*(float*)(regs.ebp - 0x8) = x * 127.0f;
+				*(float*)(regs.ebp - 0x8) = x * fDefaultC_RANGE * (re4t::cfg->fCircularRightStickCameraTurn / 60.0f);
 				s_circularY = y * fDefaultC_RANGE;
 				s_useCircularY = true;
 

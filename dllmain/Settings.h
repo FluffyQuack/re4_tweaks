@@ -103,6 +103,7 @@ public:
 	bool bSmoothAnalogTurning = false;
 	bool bRightStickAimPitch = false;
 	bool bCircularRightStickCamera = false;
+	float fCircularRightStickCameraTurn = 70.0f; // degrees at a full sideways push (vanilla: ~129)
 
 	// FRAME RATE
 	bool bMotionFixes = true;
