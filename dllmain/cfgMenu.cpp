@@ -1799,13 +1799,13 @@ void cfgMenuRender()
 					{
 						ImGui_ColumnSwitch();
 
-						ImGui::TextWrapped("Ashley's bust");
+						ImGui::TextWrapped("Ashley's and Ada's bust");
 
 						ImGui_ItemSeparator();
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 						ImGui::TextWrapped("AshleyBustPhysicsStrength: how strongly Ashley's bust bounces while she moves. 0 disables it, 1 is the game's default.");
-						ImGui::TextWrapped("With jiggle physics enabled, this scales how far it travels instead.");
+						ImGui::TextWrapped("With jiggle physics enabled, this scales how far it travels instead (for Ada too, who has no bounce of her own).");
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 
@@ -1814,7 +1814,7 @@ void cfgMenuRender()
 						ImGui::PopItemWidth();
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
-						ImGui::TextWrapped("AshleyBustSize: scales the size of Ashley's bust. 1 is the game's default.");
+						ImGui::TextWrapped("AshleyBustSize: scales the size of Ashley's and Ada's bust. 1 is the game's default.");
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 
@@ -1824,7 +1824,7 @@ void cfgMenuRender()
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("AshleyBustJigglePhysics", &re4t::cfg->bAshleyBustJigglePhysics);
-						ImGui::TextWrapped("Replaces the game's bounce with spring physics: any movement of her body sets it wobbling, and it keeps going for as long as \"Wobble duration\".");
+						ImGui::TextWrapped("Replaces the game's bounce with spring physics: any movement of her body sets it wobbling, and it keeps going for as long as \"Wobble duration\". Also applies to Ada.");
 
 						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
 

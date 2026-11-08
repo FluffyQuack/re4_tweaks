@@ -20,6 +20,10 @@
 //  - Size scales the final matrices of parts 0x1D and 0x1E, right after moveBust returns, so everything skinned to them is
 //    scaled around their origin. The matrices are rebuilt from scratch every frame (partsWorldCalc), so the scale doesn't
 //    compound, but if one wasn't rebuilt since we last scaled it (it still holds what we wrote), it's left alone.
+//
+// Ada (as the player) has no bounce of her own, but her model has the same two bust parts, 0x1D and 0x1E (on her chest,
+// part 2, in front and to either side). Right after cPlayer::move builds her final matrices, they get the jiggle (moving
+// their matrices by its offset, in world space) and the size. Strength only matters for her with jiggle physics on.
 
 static constexpr int c_bustParts[] = { 0x1D, 0x1E };
 static constexpr int c_bustPartsAll[] = { 0x1D, 0x1E, 0x1A };
@@ -280,6 +284,84 @@ static void ApplyBustSize(cModel* model)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Ada
+
+// Her bust parts: children of the chest, in front of it, right one on the right (-X)
+static bool AdaBustParts(cModel* model, cParts* parts[2])
+{
+	cParts* chest = GetParts(model, 2);
+	if (!chest)
+		return false;
+	for (int i = 0; i < 2; i++)
+	{
+		parts[i] = GetParts(model, c_bustParts[i]);
+		if (!parts[i] || parts[i]->pParent_6C != chest)
+			return false;
+	}
+	const Vec& r = parts[0]->pos_94;
+	const Vec& l = parts[1]->pos_94;
+	return r.z > 20.0f && l.z > 20.0f && r.x < -20.0f && l.x > 20.0f;
+}
+
+// What we last wrote to her bust parts' matrices
+static cParts* s_adaParts[2];
+static Mtx s_adaMats[2];
+
+static void AdaBust(cModel* model)
+{
+	const bool jiggle = re4t::cfg->bAshleyBustJigglePhysics;
+	cParts* parts[2];
+	if ((!jiggle && re4t::cfg->fAshleyBustSize == 1.0f) || !AdaBustParts(model, parts))
+	{
+		s_adaParts[0] = s_adaParts[1] = nullptr;
+		return;
+	}
+
+	// Not rebuilt since we last wrote them (the frame didn't run): don't apply it twice
+	bool rebuilt = false;
+	for (int i = 0; i < 2; i++)
+		rebuilt |= s_adaParts[i] != parts[i] || std::memcmp(s_adaMats[i], parts[i]->mat_C, sizeof(Mtx)) != 0;
+	if (!rebuilt)
+		return;
+
+	if (jiggle)
+	{
+		// Parts come and go with models (room changes etc)
+		if (s_jiggle.size() > 32)
+			s_jiggle.clear();
+
+		const float dt = GlobalPtr()->deltaTime_70 / 30.0f;
+		const uint32_t frame = GlobalPtr()->frameCounter_530C;
+		for (cParts* p : parts)
+		{
+			JiggleState& s = s_jiggle[p];
+			JiggleStep(p, p->pos_94, s, dt, frame);
+			p->mat_C[0][3] += s.out.x;
+			p->mat_C[1][3] += s.out.y;
+			p->mat_C[2][3] += s.out.z;
+			p->world_70 = Vec(p->mat_C[0][3], p->mat_C[1][3], p->mat_C[2][3]);
+		}
+	}
+
+	ApplyBustSize(model);
+
+	for (int i = 0; i < 2; i++)
+	{
+		s_adaParts[i] = parts[i];
+		std::memcpy(s_adaMats[i], parts[i]->mat_C, sizeof(Mtx));
+	}
+}
+
+// cPlayer::move's second PartsWorldPosCalc: the player's matrices are final (only the weapon and cloth come after)
+static void(__cdecl* cPlayer_PartsWorldPosCalc_orig)(cModel* pMod);
+static void __cdecl cPlayer_PartsWorldPosCalc_hook(cModel* pMod)
+{
+	cPlayer_PartsWorldPosCalc_orig(pMod);
+	if (pMod && GlobalPtr()->pl_type_4FC8 == PlayerCharacter::Ada)
+		AdaBust(pMod);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 // cPlAshley::moveBust
 static void(__fastcall* cPlAshley__moveBust_orig)(cModel* thisptr, void* unused);
@@ -343,5 +425,11 @@ void re4t::init::AshleyBust()
 	ReadCall(subMoveBust, cSubChar__moveBust_orig);
 	InjectHook(subMoveBust, cSubChar__moveBust_hook, HookType::Call);
 
-	spd::log()->info("{} -> Ashley bust hooks applied", __FUNCTION__);
+	// cPlayer::move: the second PartsWorldPosCalc call (+1), right before Wep->move and moveCloth
+	pattern = hook::pattern("56 E8 ? ? ? ? 8B 8E D8 07 00 00 83 C4 04 E8");
+	uint8_t* plPosCalc = pattern.count(1).get(0).get<uint8_t>(1);
+	ReadCall(plPosCalc, cPlayer_PartsWorldPosCalc_orig);
+	InjectHook(plPosCalc, cPlayer_PartsWorldPosCalc_hook, HookType::Call);
+
+	spd::log()->info("{} -> Ashley and Ada bust hooks applied", __FUNCTION__);
 }
