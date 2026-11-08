@@ -259,6 +259,7 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		re4t::cfg->bUseSprintToggle = ini.getBool("GAMEPLAY", "UseSprintToggle", re4t::cfg->bUseSprintToggle);
 		re4t::cfg->bDisableAutomaticReload = ini.getBool("GAMEPLAY", "DisableAutomaticReload", re4t::cfg->bDisableAutomaticReload);
 		re4t::cfg->bRifleScreenShake = ini.getBool("GAMEPLAY", "RifleScreenShake", re4t::cfg->bRifleScreenShake);
+		re4t::cfg->bUnscopedRifleThirdPerson = ini.getBool("GAMEPLAY", "UnscopedRifleThirdPerson", re4t::cfg->bUnscopedRifleThirdPerson);
 		re4t::cfg->bDisableQTE = ini.getBool("GAMEPLAY", "DisableQTE", re4t::cfg->bDisableQTE);
 		re4t::cfg->bAutomaticMashingQTE = ini.getBool("GAMEPLAY", "AutomaticMashingQTE", re4t::cfg->bAutomaticMashingQTE);
 		re4t::cfg->bAllowMatildaQuickturn = ini.getBool("GAMEPLAY", "AllowMatildaQuickturn", re4t::cfg->bAllowMatildaQuickturn);
@@ -717,6 +718,7 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setBool("GAMEPLAY", "UseSprintToggle", re4t::cfg->bUseSprintToggle);
 		ini.setBool("GAMEPLAY", "DisableAutomaticReload", re4t::cfg->bDisableAutomaticReload);
 		ini.setBool("GAMEPLAY", "RifleScreenShake", re4t::cfg->bRifleScreenShake);
+		ini.setBool("GAMEPLAY", "UnscopedRifleThirdPerson", re4t::cfg->bUnscopedRifleThirdPerson);
 		ini.setBool("GAMEPLAY", "DisableQTE", re4t::cfg->bDisableQTE);
 		ini.setBool("GAMEPLAY", "AutomaticMashingQTE", re4t::cfg->bAutomaticMashingQTE);
 		ini.setBool("GAMEPLAY", "AllowMatildaQuickturn", re4t::cfg->bAllowMatildaQuickturn);
@@ -1079,6 +1081,7 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "UseSprintToggle", re4t::cfg->bUseSprintToggle ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "DisableAutomaticReload", re4t::cfg->bDisableAutomaticReload ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "RifleScreenShake", re4t::cfg->bRifleScreenShake ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "UnscopedRifleThirdPerson", re4t::cfg->bUnscopedRifleThirdPerson ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "DisableQTE", re4t::cfg->bDisableQTE ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "AutomaticMashingQTE", re4t::cfg->bAutomaticMashingQTE ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "AllowMatildaQuickturn", re4t::cfg->bAllowMatildaQuickturn ? "true" : "false");

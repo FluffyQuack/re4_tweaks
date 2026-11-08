@@ -100,6 +100,9 @@
     <ClCompile Include="AshleyBust.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
+    <ClCompile Include="RifleThirdPerson.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
     <ClCompile Include="Ragdoll.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>

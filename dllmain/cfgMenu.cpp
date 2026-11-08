@@ -1592,6 +1592,20 @@ void cfgMenuRender()
 						ImGui::TextWrapped("Adds a screen shake effect when firing a rifle.");
 					}
 
+					// UnscopedRifleThirdPerson
+					if ((OptionsFilter.PassFilter("UnscopedRifleThirdPerson") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("UnscopedRifleThirdPerson", &re4t::cfg->bUnscopedRifleThirdPerson);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+
+						ImGui::TextWrapped("The rifle and semi-auto rifle aim in third person, like the other guns, while no scope is attached to them. With a scope attached they use the scope as usual.");
+					}
+
 					// QTE options
 					if ((OptionsFilter.PassFilter("QTE disable automatic") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
 					{

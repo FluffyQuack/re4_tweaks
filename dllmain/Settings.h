@@ -126,6 +126,7 @@ public:
 	bool bUseSprintToggle = false;
 	bool bDisableAutomaticReload = false;
 	bool bRifleScreenShake = false;
+	bool bUnscopedRifleThirdPerson = false;
 	bool bDisableQTE = false;
 	bool bAutomaticMashingQTE = false;
 	bool bAllowMatildaQuickturn = false;

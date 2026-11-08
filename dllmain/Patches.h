@@ -15,6 +15,7 @@ namespace re4t
 	{
 		// Init functions
 		void AshleyBust();
+		void RifleThirdPerson();
 		void AspectRatioTweaks();
 		void AudioTweaks();
 		void CameraTweaks();
