@@ -235,6 +235,85 @@ The original design notes follow.
 
 ## Phase 4: enemy ragdolls
 
+### As built (`Ragdoll.cpp`, "Enemy deaths")
+
+Built, not yet tested in game.
+
+- **Trigger.** Every Ganado-family enemy is tracked in the `cEm10::move` hook: its guid, hp and routine as of the last update. The update its hp goes from above 0 to 0 or below, it becomes a ragdoll on the spot.
+  - It doesn't if the current or the previous routine is one of these (`r_no_0`-`r_no_1`; for move routines `r_no_1` is the `Em10_R1_move_tbl` index / 2):
+    - **1-xx:**
+      - Leon-paired: catch / neck hang / backhold / bombhold / dash catch (`0x33`-`0x39`), `UFOCatch` `0x65`, the claw and chainsaw kills on Leon (`0x2E`, `0x30`, `0x32`);
+      - carrying Ashley: `TakeAway` `0x3A`, `R300TakeAshley` `0x66`;
+      - vehicles and props: cart `0x09`, gatlings `0x23` `0x5F` `0x68` `0x69`, drive `0x47`, catapult / rock push `0x48` `0x49`, bombers `0x50` `0x6A` `0x6C`, dragon `0x52`-`0x54`, barrel `0x55`, gondola `0x57`, drill `0x5C`, trolley `0x61` `0x62`, bull `0x67`;
+      - climbing: `0x3C`, `0x40`-`0x42`;
+      - scripted: `0x06`, `0x0A`, `0x0B`, `0x4A`, `0x4B`, `0x5A`, `0x5B`, `0x5E`, `0x63`, `0x6B`.
+    - **2-xx:** fence `0x05`, ladder `0x06`, take-away `0x0C`, suplex `0x10`, gatling `0x11`, neck break `0x15`.
+    - **3-03** (Die_Lost, a despawn), **3-05** (Die_Bomb, gibbed), and all of **4** (scenario).
+  - It also doesn't on a ladder or fence (`Be_flg & 0x30000`), when not drawn, or when the model isn't the humanoid skeleton. Every skip is logged with its routine, for tuning.
+- **Push.**
+  - **Hit point:** a simpler `EmGetDmPos`: the game's recorded point when the hit box has `YAT_FLAG_DMPOS`, otherwise the middle of the hit box. The hit box is only trusted if it lies inside the enemy.
+  - **Direction:** from `m_PosFrom` (the shot's origin) to the hit point, with the vertical part scaled by 0.3. Without a usable hit: away from Leon.
+  - **Strength by weapon group** (m/s):
+
+    | Weapon | Push |
+    |---|---|
+    | Shotgun, near (within 6000) | 6 |
+    | Shotgun, far | 2.5 |
+    | Rifles, magnum, rocket, blasts | 4.5 |
+    | Kicks / suplex | 4 |
+    | Hand, knife | 1.2 |
+    | Flash | 0.3 |
+    | Bullets | 2 |
+
+    Everything is multiplied by `g_deathPushScale`.
+  - **Split:** 40% as velocity on every body (plus 15% upwards), 60% as an impulse at the hit point on the body of the hit part (or the closest simulated part above it). The impulse is sized for 69 kg × scale³.
+- **Root follows the body** while simulating:
+  - `pos` x/z is set to the pelvis, and y to the floor under it (a ray against the room collision);
+  - `mat` translation and `Motion.Pos_world` are kept in step, so `PartsWorldPosCalc` doesn't move the parts again;
+  - `Fix_parts` is cleared, so there's no foot lock.
+- **Dissolve.** From the first Die_Lost update, the ragdoll keeps simulating, but every part is drawn lower by how far the game's root has sunk since then, and the root is no longer driven. The game's squash and fade still apply.
+- **End.** The ragdoll is removed when the enemy is hidden (`Be_flg & 0x400000`), not drawn, has hp above 0 again, or is freed or reused (guid).
+- **Cap.** At most 16 simulate. Past that, the oldest freezes: its last pose is kept and its bodies are released. A frozen corpse still sinks with the dissolve.
+- **Debug UI:**
+  - an "Enemy death ragdolls" toggle (`g_enemyDeaths`, on);
+  - a "Root follows body" toggle (`g_followRoot`, on);
+  - a "Death push scale" slider;
+  - the simulated / max counts.
+
+**After the first in-game test** (occasional one-frame pose flicker; a grenade into a group dropped the game below 1 fps):
+- **Threads.** The game updates on its own thread, and the ImGui debug UI runs on another (the codebase already uses `Game_ScheduleInMainThread` for this). The debug UI was reading the ragdoll list and calling Jolt with no synchronisation. A grenade adding six ragdolls in one update resizes that list, so this is the prime suspect for the hang.
+
+  Fix: one recursive mutex guards all shared ragdoll state and every Jolt call. The hooks take it, and so does every public function.
+- **MotionFixes.** Its pre-draw pass re-poses models whose motion has attr `0x4000` (from saved animation poses), and ragdolling models weren't excluded as planned. That's a likely cause of the one-frame flicker. It now skips them.
+- **The UI-thread race probably wasn't the trigger after all:** the Em Manager wasn't open during the grenade test, and the build was Release. The lock stays (the race was real).
+
+  Two more defences:
+  - **Denormals** are flushed to zero while ragdoll code runs (Jolt only does this on its own worker threads, which we don't use; SSE math on denormals is about 100× slower, and settling bodies decay their velocities towards zero).
+  - **Adaptive steps:** after a physics update over 10 ms, the next does one substep at most.
+
+  **Cause found by the diagnostics** (02:08 build):
+  - Some updates took 2.9 s and 15.3 s with 0.00 ms of our own time, while a ragdoll's parts jumped 51,241,400 units in Dm_Blow's airborne stage (`02-04-03`).
+  - The damage routines move the root themselves (speed, gravity) until it lands. Root-follow put it back under the pelvis every update, so it never landed, the speed kept growing, and the root flew kilometres away. The game's collision sweep across the map is what took seconds.
+  
+  Fixes:
+  - The root only follows in the death routines (`r_no_0` 3), which stay on the ground.
+  - It never jumps more than 20 m in one update, or to a non-finite value.
+  
+  The "pose was changed" check had also run after the enemy's routine, which moves the parts along with the root before they're re-posed, so it reported false alarms. It now runs at the start of the update, on ragdolls whose model hasn't moved yet.
+- **Hit impulse** was sized for the whole body (0.6 × push × 69 kg) but applied to one piece, starting a hit forearm at about 40 m/s. It's now capped at 8 m/s on that piece.
+- **Measured outside the game:** 8 ragdolls created overlapping around a blast, with those impulses, on a mesh floor with walls. Jolt's worst step was 0.5 ms (average 0.1 ms) and everything slept within 3 s, so Jolt's own cost isn't the problem.
+- **Diagnostics:**
+  - A ragdoll's pelvis is checked as its next update starts; if it moved more than 30 units since our write, that's logged with the routine and motion attr.
+  - Updates slower than 50 ms are logged with our time split up: world sync, physics and steps, poses, active bodies, room pieces and builds.
+  - Collision-piece builds over 5 ms are logged.
+- **Mercenaries run as Ada (14:35 build):**
+  - *"Slow update" lines of seconds with 0.00 ms of ours:* false alarms. The watchdog's clock only ran while ragdolls existed, so the first update after one started measured the whole gap since the last one. It now restarts whenever there are none, or frames went by without an update of ours (pause, menus).
+  - *Corpse flickering between positions (next to a ladder), and pose changes of 1000-6000 units logged in Die_Normal (`03-02`) and as it hands over to Die_Cramp (`03-00-00-01`):* after we pose a dead enemy, cEm10::move runs EmAtCheck, which pushes the root out of other characters and objects (a crate's or ladder's box: up to metres, to its edge) and then moves every part by that push (PartsWorldPosCalc). The ragdoll doesn't collide with objects, so the body can lie inside one. A dead ragdoll now has its character collision turned off (atari flag 0x200) when it's posed, as the game itself does in Die_Cramp; EmAtCheck then returns without touching it.
+  - *Bodies flying up (Ada's head-stun melee, some rifle kills on a downed enemy):* the start velocity was each part's movement in the update it died in, capped at 15 m/s. That update often snaps to a new animation (a hit reaction or death motion starting from another pose), which reads as tens of m/s. Now it's the slower of that update's and the previous one's movement, capped at 6 m/s, and at most 3 m/s upwards. The start log line has the pelvis speed (raw and used), the fastest part and the push; a "died in" line has the routine, weapon, hit part and push direction.
+  - If the game stays below 2 fps for 5 updates with ragdolls out, they're all stopped and enemy death ragdolls are turned off.
+
+The original design notes follow.
+
 ### Trigger
 
 The frame that HP goes from above 0 to 0 or below, checked when `cEm10::move` returns. Not on `r_no_0 == 3`: most kills spend 1+ seconds in a damage routine first (Dm_Blow, Dm_KnockOut, Dm_Roof … then `setRno(3,0,…)`, e.g. em10.cpp:15029-15830).

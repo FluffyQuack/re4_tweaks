@@ -231,11 +231,18 @@ void RagdollDebug_PartsUI(cModel* model)
 	else
 		ImGui::TextDisabled("Ragdoll: not supported for this model");
 
-	ImGui::Text("Ragdolls: %d, room collision pieces: %d", ragdoll::ActiveCount(), ragdoll::WorldBodyCount());
+	ImGui::Text("Ragdolls: %d (%d simulated, max %d), room collision pieces: %d", ragdoll::ActiveCount(), ragdoll::SimulatedCount(),
+		ragdoll::c_maxSimulated, ragdoll::WorldBodyCount());
 	ImGui::SameLine();
 	if (ImGui::Button("Stop all"))
 		ragdoll::StopAll();
 	ImGui::Checkbox("Draw ragdoll bodies", &s_drawBodies);
+	ImGui::SameLine();
+	ImGui::Checkbox("Enemy death ragdolls", &ragdoll::g_enemyDeaths);
+	ImGui::SameLine();
+	ImGui::Checkbox("Root follows body", &ragdoll::g_followRoot);
+	ImGui::SetNextItemWidth(120.0f * esHook._cur_monitor_dpi);
+	ImGui::SliderFloat("Death push scale", &ragdoll::g_deathPushScale, 0.0f, 3.0f, "%.2f");
 	ImGui::Separator();
 
 	if (ImGui::Button("Copy list to clipboard"))

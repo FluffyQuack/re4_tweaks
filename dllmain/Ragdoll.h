@@ -24,6 +24,19 @@ namespace ragdoll
 	// Static and moving collision pieces taken from the room (SatMgr)
 	int WorldBodyCount();
 
+	// Ganado-family enemies turn into ragdolls when they die (debug toggle until there's a setting)
+	extern bool g_enemyDeaths;
+
+	// Scales the push from the killing hit
+	extern float g_deathPushScale;
+
+	// A dead enemy's root follows its ragdoll (debug toggle)
+	extern bool g_followRoot;
+
+	// More than this many simulated ragdolls: the oldest one freezes where it is
+	constexpr int c_maxSimulated = 16;
+	int SimulatedCount();
+
 	// Every ragdoll body's capsule, in game units, for drawing
 	struct DebugCapsule
 	{

@@ -3,6 +3,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 
+#include <chrono>
 #include <vector>
 
 // The room's collision for the ragdolls: one Jolt mesh per collision piece in SatMgr (the same floors, slopes and walls the
@@ -35,6 +36,7 @@ namespace ragdoll
 		};
 
 		std::vector<Piece> s_pieces; // by SatMgr slot
+		int s_builds = 0;
 
 		void DestroyPiece(Piece& p)
 		{
@@ -68,6 +70,21 @@ namespace ragdoll
 		bool BuildPiece(cSat& sat, Piece& p)
 		{
 			using namespace JPH;
+
+			s_builds++;
+			const auto t0 = std::chrono::steady_clock::now();
+			struct LogTime
+			{
+				std::chrono::steady_clock::time_point t0;
+				const cSat& sat;
+				~LogTime()
+				{
+					double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+					if (ms > 5.0)
+						spd::log()->info("ragdoll -> room collision piece {} ({} triangles) took {:.1f} ms to build", (void*)&sat,
+							sat.polygon_num_1E, ms);
+				}
+			} logTime{ t0, sat };
 
 			p.vtx = sat.vert_p_C;
 			p.poly = sat.poly_p_18;
@@ -226,6 +243,11 @@ namespace ragdoll
 		for (Piece& p : s_pieces)
 			DestroyPiece(p);
 		s_pieces.clear();
+	}
+
+	int World_RebuildCount()
+	{
+		return s_builds;
 	}
 
 	int World_BodyCount()

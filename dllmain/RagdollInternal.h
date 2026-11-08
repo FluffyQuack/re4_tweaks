@@ -102,6 +102,7 @@ namespace ragdoll
 	void World_Sync(float dt);
 	void World_Clear();
 	int World_BodyCount();
+	int World_RebuildCount(); // pieces built since startup (diagnostics)
 
 	// ---- Skeleton (RagdollRig.cpp) ----
 

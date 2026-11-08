@@ -2,6 +2,7 @@
 #include "dllmain.h"
 #include "Game.h"
 #include "Settings.h"
+#include "Ragdoll.h"
 #include <cmath>
 #include <vector>
 #include <unordered_map>
@@ -643,6 +644,9 @@ static void MotionWorldBlend_apply()
 			for (cModel* pEm = *list; pEm; pEm = *(cModel**)((uint8_t*)pEm + 8))
 			{
 				if (!s_worldBlendMoved.count(pEm))
+					continue;
+				// A ragdoll's parts come from its physics, not its motion
+				if (ragdoll::IsActive(pEm))
 					continue;
 				models.push_back(pEm);
 				for (cParts* p = pEm->childParts_F4; p; p = p->nextParts_F4)
