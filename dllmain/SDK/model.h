@@ -210,14 +210,14 @@ struct MOTION_INFO
   uint16_t Mot_attr_40;
   uint16_t Mot_state_42;
   uint32_t Mot_flag_44;
-  Vec Pos_move_old_48;
-  Vec Ang_54;
-  Vec Ang_old_60;
-  Vec Ang_dist_6C;
-  Vec Pos_78;
-  Vec Pos_old_84;
-  Vec Pos_dist_90;
-  Vec Pos_world_9C;
+  Vec Pos_48;          // root position (current)
+  Vec Pos_old_54;
+  Vec Pos_dist_60;     // root position change over the whole motion
+  Vec Pos_world_6C;    // PartsWorldPosCalc: where the parts were computed (it moves them by pos - this)
+  Vec Pos_move_old_78; // last root speed
+  Vec Ang_84;          // root rotation (current)
+  Vec Ang_old_90;
+  Vec Ang_dist_9C;
   struct SEQUENCE_DATA *pSeq_top_A8;
   int32_t Seq_AC;
   int32_t Seq_old_B0;

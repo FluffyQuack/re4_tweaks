@@ -51,7 +51,8 @@
 // keeps simulating and is drawn that much lower, so it sinks with it. The ragdoll ends when the game hides the enemy,
 // brings it back (hp above 0) or frees it.
 //
-// At most c_maxSimulated ragdolls simulate; past that the oldest freezes in place (no physics, same pose).
+// At most c_maxSimulated ragdolls simulate; past that the oldest freezes in place (no physics, same pose). One that's
+// still moving after c_maxAwakeTime (jittering on something) is put to sleep, keeping its collision.
 //
 // Diagnostics (while ragdolls exist):
 // - A ragdoll's pose is checked as its update starts: if anything changed it since we wrote it, that's logged (once a
@@ -193,6 +194,7 @@ namespace ragdoll
 			bool written = false;
 			Vec writtenPelvis;
 			uint32_t lastOverwriteLog = 0;
+			float awakeTime = 0.0f; // seconds (game time) in a row with a body still moving
 
 			std::vector<cParts*> parts;
 			std::vector<int> body;   // per part: its ragdoll body, or -1
@@ -248,6 +250,7 @@ namespace ragdoll
 		constexpr float c_maxStartUp = 3.0f;    // m/s, of which upwards
 
 		constexpr float c_step = 1.0f / 60.0f;
+		constexpr float c_maxAwakeTime = 8.0f; // s, then a still-moving ragdoll is put to sleep
 		constexpr int c_maxSteps = 4;
 		constexpr uint32_t c_pendingTimeout = 30; // updates
 
@@ -552,8 +555,6 @@ namespace ragdoll
 			m->mat_C[0][3] = pos.x;
 			m->mat_C[1][3] = pos.y;
 			m->mat_C[2][3] = pos.z;
-			m->Motion_1D8.Pos_world_9C = pos; // or PartsWorldPosCalc moves the parts by the change
-			m->Fix_parts_13C = 0;             // no foot lock moving the root (and the parts) afterwards
 		}
 
 		void WritePose(Instance& in)
@@ -593,6 +594,15 @@ namespace ragdoll
 				p->mat_C[1][3] += sink;
 				p->world_70 = Vec(p->mat_C[0][3], p->mat_C[1][3], p->mat_C[2][3]);
 			}
+
+			// Nothing that moved the root may move the pose we just wrote. Right after this, cEm10::move (and the player's
+			// update) runs partsFixAdjust, which moves the root to keep a foot where the animation planted it, and
+			// PartsWorldPosCalc, which moves every part by pos - Motion.Pos_world: the root's move this update (the routine's
+			// own movement, FollowRoot, last update's wall push). Those were drawn on top of the ragdoll: a corpse held off
+			// its body by a constant amount, or, in the damage routines that keep moving the root, one that drifts away
+			// (slowly floating up) or flickers.
+			m->Motion_1D8.Pos_world_6C = m->pos_94;
+			m->Fix_parts_13C = 0;
 
 			in.written = true;
 			in.writtenPelvis = in.parts[c_bodyPart[0]]->world_70;
@@ -730,6 +740,51 @@ namespace ragdoll
 				s_system->Update(steps * c_step, steps, s_temp, s_jobs);
 				s_msStep = MsSince(t0);
 				s_stepsThisUpdate = steps;
+			}
+
+			// A ragdoll still moving after c_maxAwakeTime (jittering on something, or on another corpse) is put to sleep: it
+			// keeps its collision, so others still land on it, and a hit or a body falling on it wakes it again
+			JPH::BodyInterface& bi = s_system->GetBodyInterface();
+			for (auto& kv : s_instances)
+			{
+				Instance& in = kv.second;
+				if (!in.ragdoll)
+					continue;
+				float fastest = 0.0f;
+				int fastestBody = -1, awake = 0;
+				for (int b = 0; b < c_numBodies; b++)
+				{
+					const JPH::BodyID id = in.ragdoll->GetBodyID(b);
+					if (!bi.IsActive(id))
+						continue;
+					awake++;
+					const float v = bi.GetLinearVelocity(id).Length();
+					if (v > fastest)
+					{
+						fastest = v;
+						fastestBody = b;
+					}
+				}
+				if (!awake)
+				{
+					in.awakeTime = 0.0f;
+					continue;
+				}
+				in.awakeTime += dt;
+				if (in.awakeTime < c_maxAwakeTime)
+					continue;
+
+				const Vec& p = in.parts[c_bodyPart[0]]->world_70;
+				spd::log()->info("ragdoll -> {} still moving after {:.0f} s ({} bodies awake, fastest {} at {:.2f} m/s; pelvis at ({:.0f}, {:.0f}, "
+					"{:.0f}), routine {:02X}-{:02X}-{:02X}-{:02X}): put to sleep", (void*)in.model, in.awakeTime, awake, fastestBody, fastest,
+					p.x, p.y, p.z, in.model->r_no_0_FC, in.model->r_no_1_FD, in.model->r_no_2_FE, in.model->r_no_3_FF);
+				for (int b = 0; b < c_numBodies; b++)
+				{
+					const JPH::BodyID id = in.ragdoll->GetBodyID(b);
+					bi.SetLinearAndAngularVelocity(id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+					bi.DeactivateBody(id);
+				}
+				in.awakeTime = 0.0f;
 			}
 		}
 
@@ -1051,8 +1106,49 @@ namespace ragdoll
 			AfterPose(pMod, false);
 		}
 
+		// at_pos_calc, replaced: a collision push (SatMgr.check / checkAir pushing the root out of a wall) moves the root
+		// and, as the original does, every part by the push, except a ragdoll's: those are drawn as we wrote them. It
+		// runs after our write in the same update, so a corpse whose root sits against a wall was drawn pushed off its
+		// body (a constant offset), and one still in a damage routine's fall (Dm_Blow's ledge drop) drifted away.
+		uint8_t* s_atPosCalc = nullptr;
+
+		void __cdecl at_pos_calc_hook(cModel* m, const Vec* v)
+		{
+			if (v->x != 0.0f || v->y != 0.0f || v->z != 0.0f)
+			{
+				m->pos_94 = m->pos_94 + *v;
+				bool ragdolling = false;
+				{
+					Lock lock(s_mutex);
+					auto it = s_instances.find(m);
+					ragdolling = it != s_instances.end() && it->second.written;
+				}
+				if (!ragdolling)
+				{
+					for (cParts* p = m->childParts_F4; p; p = p->nextParts_F4)
+					{
+						p->world_70 = p->world_70 + *v;
+						p->mat_C[0][3] += v->x;
+						p->mat_C[1][3] += v->y;
+						p->mat_C[2][3] += v->z;
+					}
+				}
+				m->Motion_1D8.Pos_world_6C = m->pos_94;
+			}
+			m->mat_C[0][3] = m->pos_94.x;
+			m->mat_C[1][3] = m->pos_94.y;
+			m->mat_C[2][3] = m->pos_94.z;
+		}
+
 		void FindHookPoints()
 		{
+			// at_pos_calc
+			auto atPattern = hook::pattern("55 8B EC 53 8B 5D 08 56 8B B3 F4 00 00 00 57 8B 7D 0C 57 E8 ? ? ? ? D9 EE DA E9");
+			if (atPattern.size() == 1)
+				s_atPosCalc = atPattern.get_first<uint8_t>(0);
+			else
+				spd::log()->error("ragdoll -> at_pos_calc not found: collision pushes will move ragdolls");
+
 			// cEm10::move: partsWorldCalc, em10ScaleCompress, em10BombNeckMove, partsFixAdjust, PartsWorldPosCalc. The
 			// ragdoll pose goes in right after partsWorldCalc (+2).
 			auto pattern = hook::pattern("8B CE E8 ? ? ? ? 8B CE E8 ? ? ? ? E8 ? ? ? ? 8B CE E8 ? ? ? ? 56 E8");
@@ -1072,6 +1168,8 @@ namespace ragdoll
 
 		void InstallHooks()
 		{
+			if (s_atPosCalc)
+				InjectHook(s_atPosCalc, at_pos_calc_hook, HookType::Jump);
 			if (s_em10PartsWorldCalc)
 			{
 				ReadCall(s_em10PartsWorldCalc, cEm10_partsWorldCalc_orig);
