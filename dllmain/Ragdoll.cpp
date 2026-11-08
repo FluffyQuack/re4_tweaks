@@ -46,6 +46,8 @@
 // away (most kills first play a damage motion for a second or more before the death routine; that's replaced too),
 // unless it's in a state that has to keep its animation (grabbing the player, on a vehicle, climbing, scripted, blown
 // up, despawning). The killing hit pushes it: a share of the push to every body, the rest as an impulse at the hit.
+// A melee kill (kick, punch) is the exception: its knock-back is the hit reaction's animation, so that plays until the
+// launch is past its fastest (at most c_meleeMaxDelay), and the ragdoll starts with the parts' movement from it.
 // While it ragdolls, its root follows the pelvis (x/z, and y on the floor under it), so item drops, ground effects and
 // shadows stay with the body. During the dissolve (Die_Lost) the game sinks the root by 6 per update; the ragdoll
 // keeps simulating and is drawn that much lower, so it sinks with it. The ragdoll ends when the game hides the enemy,
@@ -173,6 +175,7 @@ namespace ragdoll
 			int impulsePart = -1;
 			JPH::Vec3 impulsePoint = JPH::Vec3::sZero(); // m
 			JPH::Vec3 impulse = JPH::Vec3::sZero();      // N s
+			bool fromMotion = false; // started a few updates into a hit reaction: the parts' movement is the reaction's own
 		};
 
 		struct Instance
@@ -215,6 +218,26 @@ namespace ragdoll
 
 		std::unordered_map<cModel*, Instance> s_instances;
 		std::unordered_map<cModel*, Pending> s_pending;
+
+		// A melee kill (a kick, a punch): the knock-back is all in the hit reaction's animation (Dm_Showtay's roundhouse,
+		// Dm_Blow, ...), which starts in the update the enemy dies in, so its parts haven't moved with it yet (that update
+		// only snaps to the reaction's first frame). The ragdoll waits until the launch is past its fastest, then starts
+		// with the movement the parts have.
+		struct Deferred
+		{
+			uint32_t guid;
+			StartInfo info;
+			Vec hitOffset;          // the impulse point from its part, at the hit (game units)
+			uint8_t r0, r1;         // the routine it died in
+			int updates = 0;        // since the one it died in
+			float time = 0.0f;      // s
+			float peak = 0.0f;      // m/s, the pelvis' fastest so far
+			uint32_t lastFrame = 0;
+		};
+		std::unordered_map<cModel*, Deferred> s_deferred;
+		constexpr float c_meleeMaxDelay = 0.5f;       // s, the longest a melee kill keeps its reaction
+		constexpr float c_meleeMinLaunch = 1.5f;      // m/s, the pelvis speed that counts as launched
+		constexpr float c_meleeMaxStartSpeed = 10.0f; // m/s, what a part keeps of the reaction's movement
 		JPH::CollisionGroup::GroupID s_nextGroup = 1;
 		uint32_t s_nextOrder = 1;
 		uint32_t s_lastFrame = 0;
@@ -458,7 +481,8 @@ namespace ragdoll
 			// Keep going the way the parts were moving (world_old / world_old2: where they were at the end of the last two
 			// updates). Of this update's movement and the one before, the slower: the update an enemy dies in often snaps
 			// to a new animation (a hit reaction or death motion starting from a different pose, a melee launch), which
-			// would read as tens of m/s. Then no faster than a falling body moves, and not much upwards.
+			// would read as tens of m/s. Then no faster than a falling body moves, and not much upwards. A start a few
+			// updates into a melee reaction (fromMotion) has no snap in either: their average, allowed to be faster.
 			const float dt = GlobalPtr()->deltaTime_70 / 30.0f;
 			JPH::BodyInterface& bi = s_system->GetBodyInterface();
 			const JPH::Vec3 pushV(info.push.x, info.push.y, info.push.z);
@@ -473,9 +497,13 @@ namespace ragdoll
 					const Vec d0 = p->world_old_7C - p->world_old2_88;
 					const JPH::Vec3 v1 = JPH::Vec3(d1.x, d1.y, d1.z) * (c_toJolt / dt);
 					const JPH::Vec3 v0 = JPH::Vec3(d0.x, d0.y, d0.z) * (c_toJolt / dt);
-					v = v0.LengthSq() < v1.LengthSq() ? v0 : v1;
-					if (!v.IsNaN() && v.Length() > c_maxStartSpeed)
-						v = v.Normalized() * c_maxStartSpeed;
+					if (info.fromMotion)
+						v = (v0 + v1) * 0.5f;
+					else
+						v = v0.LengthSq() < v1.LengthSq() ? v0 : v1;
+					const float maxSpeed = info.fromMotion ? c_meleeMaxStartSpeed : c_maxStartSpeed;
+					if (!v.IsNaN() && v.Length() > maxSpeed)
+						v = v.Normalized() * maxSpeed;
 					if (v.IsNaN())
 						v = JPH::Vec3::sZero();
 					v.SetY(std::min(v.GetY(), c_maxStartUp));
@@ -708,6 +736,18 @@ namespace ragdoll
 					++it;
 			}
 
+			// Melee kills waiting on their reaction that stopped being updated (hidden, freed)
+			for (auto it = s_deferred.begin(); it != s_deferred.end();)
+			{
+				if (frame - it->second.lastFrame > c_pendingTimeout)
+				{
+					spd::log()->info("ragdoll -> {} stopped updating during its hit reaction, not started", (void*)it->first);
+					it = s_deferred.erase(it);
+				}
+				else
+					++it;
+			}
+
 			if (s_instances.empty() || !s_system)
 				return;
 
@@ -879,6 +919,21 @@ namespace ragdoll
 			}
 		}
 
+		// Weapons whose kills wait for the hit reaction's launch (kicks, the suplex, the punch; not the knife, whose
+		// reactions are a stagger)
+		bool IsMelee(int wep)
+		{
+			return wep == 0x00 || (wep >= 0x22 && wep <= 0x25);
+		}
+
+		cParts* PartAt(cModel* model, int idx)
+		{
+			cParts* p = model->childParts_F4;
+			for (int i = 0; p && i < idx; i++)
+				p = p->nextParts_F4;
+			return p;
+		}
+
 		// Where the hit box was hit (a simpler EmGetDmPos: the game's hit point when it recorded one, else the middle of
 		// the box), and the part it belongs to
 		bool HitPoint(cEm* em, Vec& point, int& part)
@@ -996,8 +1051,91 @@ namespace ragdoll
 				info.impulse = JPH::Vec3(dir.x, dir.y, dir.z) * (0.25f * speed * mass);
 			}
 
+			if (IsMelee(dmg.m_Wep_6))
+			{
+				Deferred d;
+				d.guid = model->guid_F8;
+				d.info = info;
+				d.hitOffset = Vec(0.0f, 0.0f, 0.0f);
+				if (info.impulsePart >= 0)
+					if (cParts* p = PartAt(model, info.impulsePart))
+						d.hitOffset = point - p->world_70;
+				d.r0 = r0;
+				d.r1 = r1;
+				d.lastFrame = GlobalPtr()->frameCounter_530C;
+				s_deferred[model] = d;
+				spd::log()->info("ragdoll -> {}: a melee kill, waits for its hit reaction's launch", (void*)model);
+				return;
+			}
+
 			if (!CreateInstance(model, info, true))
 				spd::log()->warn("ragdoll -> couldn't start on {} as it died", (void*)model);
+		}
+
+		// A melee kill waiting on its reaction (see Deferred), each update after the one it died in
+		void UpdateDeferred(cModel* model, const Track& t)
+		{
+			auto it = s_deferred.find(model);
+			if (it == s_deferred.end())
+				return;
+			Deferred& d = it->second;
+
+			if (model->guid_F8 != d.guid || t.hp > 0 || !g_enemyDeaths || !s_joltReady)
+			{
+				s_deferred.erase(it);
+				return;
+			}
+			if (KeepsAnimation(t.r0, t.r1) || (AsEm10(model)->Be_flg_4B0 & 0x30000))
+			{
+				spd::log()->info("ragdoll -> {} went into routine {:02X}-{:02X} during its hit reaction: keeps its animation",
+					(void*)model, t.r0, t.r1);
+				s_deferred.erase(it);
+				return;
+			}
+
+			const float dt = GlobalPtr()->deltaTime_70 / 30.0f;
+			d.updates++;
+			d.time += dt;
+			d.lastFrame = GlobalPtr()->frameCounter_530C;
+
+			float speed = 0.0f;
+			cParts* pelvis = PartAt(model, c_bodyPart[0]);
+			if (pelvis && dt > 0.0f)
+			{
+				const Vec dp = pelvis->world_70 - pelvis->world_old_7C;
+				speed = sqrtf(dp.x * dp.x + dp.y * dp.y + dp.z * dp.z) * c_toJolt / dt;
+			}
+
+			// The update it died in only snapped to the reaction's first frame; from the second one after it, both
+			// movements CreateInstance reads (this update's and the last) are the reaction's own
+			const char* why = nullptr;
+			if (d.updates >= 2)
+			{
+				if (t.r0 != d.r0 || t.r1 != d.r1)
+					why = "its reaction ended";
+				else if (d.peak >= c_meleeMinLaunch && speed < 0.85f * d.peak)
+					why = "past its fastest";
+				else if (d.time >= c_meleeMaxDelay)
+					why = "out of time";
+			}
+			d.peak = std::max(d.peak, speed);
+			if (!why)
+				return;
+
+			StartInfo info = d.info;
+			info.fromMotion = true;
+			if (info.impulsePart >= 0)
+				if (cParts* p = PartAt(model, info.impulsePart))
+				{
+					const Vec point = p->world_70 + d.hitOffset;
+					info.impulsePoint = JPH::Vec3(point.x, point.y, point.z) * c_toJolt;
+				}
+			spd::log()->info("ragdoll -> {} starts {:.2f} s into its hit reaction ({}; pelvis at {:.1f} m/s, fastest {:.1f})",
+				(void*)model, d.time, why, speed, d.peak);
+			s_deferred.erase(it);
+
+			if (!CreateInstance(model, info, true))
+				spd::log()->warn("ragdoll -> couldn't start on {} after its hit reaction", (void*)model);
 		}
 
 		// Called for every Ganado-family enemy each update (as it's posed): spots the update its hp runs out
@@ -1013,7 +1151,11 @@ namespace ragdoll
 			t.r0 = model->r_no_0_FC;
 			t.r1 = model->r_no_1_FD;
 
-			if (same && prev.hp > 0 && t.hp <= 0 && g_enemyDeaths && s_joltReady && !s_instances.count(model) && !s_pending.count(model))
+			// Before the death check, so a kill deferred this update waits for the next
+			UpdateDeferred(model, t);
+
+			if (same && prev.hp > 0 && t.hp <= 0 && g_enemyDeaths && s_joltReady && !s_instances.count(model) && !s_pending.count(model)
+				&& !s_deferred.count(model))
 				StartDeath(model, prev);
 
 			// Enemies come and go with rooms
@@ -1040,7 +1182,7 @@ namespace ragdoll
 			if (em10)
 				TrackEm10(model);
 
-			if (s_instances.empty() && s_pending.empty())
+			if (s_instances.empty() && s_pending.empty() && s_deferred.empty())
 			{
 				s_haveLastUpdateTime = false; // the watchdog times updates with ragdolls out, not the gaps between them
 				return;
@@ -1080,6 +1222,7 @@ namespace ragdoll
 		void StopEverything()
 		{
 			s_pending.clear();
+			s_deferred.clear();
 			for (auto& kv : s_instances)
 				ReleaseBodies(kv.second);
 			s_instances.clear();
