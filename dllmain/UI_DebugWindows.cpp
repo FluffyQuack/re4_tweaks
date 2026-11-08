@@ -26,6 +26,7 @@ std::string UI_EmManager::EmDisplayString(cEm& em, bool showEmPointers)
 }
 
 void ImGui_ItemSeparator(); // cfgMenu.cpp
+void RagdollDebug_PartsUI(cModel* model); // RagdollDebug.cpp
 
 bool UI_EmManager::Render(bool WindowMode)
 {
@@ -460,6 +461,8 @@ bool UI_EmManager::Render(bool WindowMode)
 						}
 						ImGui::EndListBox();
 					}*/
+
+					RagdollDebug_PartsUI(em);
 
 					ImGui::Separator();
 					ImGui::Dummy(ImVec2(10, 5 * esHook._cur_monitor_dpi));

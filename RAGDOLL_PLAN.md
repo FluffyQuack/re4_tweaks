@@ -37,19 +37,48 @@ Decisions so far:
 
 ## Phase 1: in-game research tools
 
-1. **Part dump window** in the debug UI, for the selected character:
-   - lists each part's index, parent index, local offset and world position;
-   - draws the indices on screen.
+1. **Part dump window:** done, as the "Parts (ragdoll)" section of Em Manager (`RagdollDebug.cpp`). For the selected character it:
+   - lists each part's index, parent index, length to the parent, local offset and world position;
+   - draws the skeleton and indices on screen, and can highlight one part;
+   - copies the list to the clipboard or writes it to the log, with the parts' height range.
 
-   Use it to map the Ganado, Zealot, Soldier, Garrador and Leon skeletons. Known player parts from the decomp:
+   **Done:** Leon, a Ganado, a Zealot, a Soldier and a Garrador are mapped (see Phase 3, "Part mapping"). The original task was to map the Ganado, Zealot, Soldier, Garrador and Leon skeletons. Known player parts from the decomp:
    - 0 root; 1 and 2 spine/chest; 3 neck; 4 head;
    - 5-10 and 11-16 arms;
    - 18-21 and 22-25 legs (`pl00_mirror`, player.cpp:71).
 
    For Ganados the code uses head 5 (1-based, i.e. part 4), torso 2, and the arm/leg hit boxes at em10.cpp:3366-3412.
-2. **Confirm units.** 1 m = 1000 game units is likely: the sight ranges use 3500-15000.
-3. **Confirm frame-rate scaling.** Check how the PC port scales the GC frame timers: the em10 timers are floats on PC, and the player death demo timers need checking too.
-4. **Find the PC addresses** for the call sites below, using byte patterns as the rest of the codebase does.
+2. **Units:** confirmed, 1 m = 1000 game units (Leon's parts span 1759).
+3. **Frame-rate scaling.** Done for em10 (see PC findings). Still to check: the player death demo timers (`gameDiedemo`).
+4. **PC addresses:** done (see PC findings).
+
+### PC findings
+
+From `bio4.exe` (the unpatched `bio4.exe.bak`). The addresses are for reference only; the code finds everything by byte pattern.
+
+| What | Address | How it's found |
+|---|---|---|
+| `cModel::partsWorldCalc` | `0x65BED0` (jump stub `0x405DA3`) | Already read by MotionFixes |
+| `cEm10::move`: `partsWorldCalc` call (enemy hook point) | `0x45B30A` | `8B CE E8 ? ? ? ? 8B CE E8 ? ? ? ? E8 ? ? ? ? 8B CE E8 ? ? ? ? 56 E8`, +2 (unique) |
+| `cPlayer::move`: second `PartsWorldPosCalc` call (player hook point) | `0x765174` | `56 E8 ? ? ? ? 8B 8E D8 07 00 00 83 C4 04 E8`, +1 (unique) |
+| `cModel::partsFixAdjust` | `0x65C680` (stub `0x4049EE`) | Follows the enemy hook point |
+| `PartsWorldPosCalc` | `0x65EDB0` (stub `0x4068BB`) | Follows the enemy hook point |
+| `EmGetDmPos` (cdecl: em, pos, ang) | `0x5B2C70` (stub `0x40A952`, 26 callers) | Not patternable: an identical copy at `0x5B31A0` has no callers. Reimplement it from em_sub.cpp:73 (about 60 lines) in Phase 4. |
+
+The enemy sequence on PC is the same as the decomp:
+- `test [esi+0x4B0], 0x400000` (work `Be_flg`);
+- then neck/waist/slope;
+- then `partsWorldCalc`, `0x430510` (ScaleCompress), `0x438240` (BombNeckMove), `partsFixAdjust`, `PartsWorldPosCalc`.
+
+The player sequence is also as in the decomp:
+- `partsWorldCalc`, `partsFixAdjust`, `PartsWorldPosCalc`;
+- then `EmAtCheck`, `SatMgr.check`, `atari.move`;
+- then `PartsWorldPosCalc` (the hook point);
+- then `Wep->move` (`[esi+0x7D8]`) and the virtual at `+0x54` (moveCloth).
+
+**Timers on PC.** Die_Lost's `Timer` (`0x4B4`) counts down by `pG->deltaTime` (`[0xC06F3C]+0x70`). The sinking does not: `Compress_y -= 0.028` and `pos.y -= 6.0` run once per update (0x450E7B-0x450EB8), so corpses sink twice as fast at 60fps. That's the game's own behaviour; the frozen ragdoll just rides along with it.
+
+`Ragdoll.cpp` looks up both hook points at startup and logs them. Nothing is patched yet.
 
 ## Phase 2: physics world (`dllmain\Ragdoll.cpp`)
 
@@ -72,6 +101,74 @@ Decisions so far:
   - Single-threaded job system.
 
 ## Phase 3: skeleton definitions
+
+### Part mapping (measured in game)
+
+Measured with the part dump window on:
+- Leon (119 parts);
+- a Ganado (id 0x16, 34 parts);
+- a Zealot (id 0x11, 37 parts);
+- a Soldier (id 0x1D, 37 parts);
+- a Garrador (id 0x1C, 38 parts).
+
+**Parts 0-25 are the same skeleton in all five,** with the same local offsets. Only the model scale differs:
+- Leon and the Zealot: 1.0;
+- the Ganado: about 1.01;
+- the Soldier and the Garrador: 1.25 (bone lengths 263 / 330 / 544 instead of 210 / 264 / 435.5).
+
+Lengths and capsule sizes are therefore measured from the live pose at the start, never taken from the table.
+
+- **Units:** Leon's parts span 1759 units, so 1 m = 1000 units.
+- **Bind pose:** a T-pose with no rotation on any part. Arm offsets are pure ±X, leg and spine offsets pure ±Y, and the toes point +Z (forward). That makes the bind pose a clean reference for constraint frames and joint limits.
+- **Sides:** the character faces +Z with Y up, and -X is the character's right. Confirmed: part 10 is Leon's right hand. So 5-10 and 18-21 are the right side, and 11-16 and 22-25 the left.
+
+| Part | Parent | Offset (bind) | What it is | Ragdoll |
+|---|---|---|---|---|
+| 0 | model | y ≈ 1114-1132 | hips / pelvis | **Pelvis** body |
+| 1 | 0 | +10 Y | waist (waistMove target) | **Lower spine** body (1 → 2) |
+| 2 | 1 | +210 Y | chest | **Chest** body (2 → 3) |
+| 3 | 2 | +200 Y | neck | **Head** body (3 → head top, about 4 + 170 Y) |
+| 4 | 3 | +90 Y | head | Follows 3 (animated local) |
+| 5 / 11 | 2 | ∓45, +105 Y | clavicle R / L | Follows the chest (animated local) |
+| 7 / 13 | 5 / 11 | ∓127, +42.8 Y | shoulder: upper arm R / L | **Upper arm** bodies (7 → 8, 264 long) |
+| 6 / 12 | 5 / 11 | same as 7 / 13 | shoulder twin (deform helper) | Follows 7 / 13 (offset captured at start) |
+| 8 / 14 | 7 / 13 | ∓264 X | elbow: forearm R / L | **Lower arm** bodies (8 → 10, 268 long) |
+| 9 / 15 | 8 / 14 | ∓154 X | forearm twist | Follows (animated local) |
+| 10 / 16 | 9 / 15 | ∓114 X | wrist / hand | Follows (animated local) |
+| 17 | 0 | 0 | leg root | Follows the pelvis (animated local) |
+| 18 / 22 | 17 | ∓92 X, -130 Y | hip: thigh R / L | **Thigh** bodies (18 → 19, 435.5 long) |
+| 19 / 23 | 18 / 22 | -435.5 Y | knee: shin R / L | **Shin** bodies (19 → 20, 439.5 long) |
+| 20 / 24 | 19 / 23 | -439.5 Y | ankle: foot | Follows (animated local) |
+| 21 / 25 | 20 / 24 | -91 Y, +82-87 Z | toe | Follows (animated local) |
+
+That's 13 bodies: pelvis, lower spine, chest, head, and 2 each of upper arm, lower arm, thigh and shin. The Jolt sample's 12, plus a spine split.
+
+**Bone directions in the parts' local frames** (Jolt twist axes):
+- right arm: -X;
+- left arm: +X;
+- legs: -Y;
+- spine and neck: +Y.
+
+**Parts beyond 25,** all left to the game (they follow their parents):
+- Ganado 26-33: 26 on part 1; 27-33 face/jaw on 4 (30 on 27).
+- Zealot 26-36: as the Ganado, plus 34/35 (zero-length, on the knees 19/23; robe helpers) and 36 (on 3; hood).
+- Soldier 26-36: as the Ganado, plus 34-36 on the right hand 10 (held weapon parts; 36 reaches 1420 units out).
+- Garrador 26-37: as the Ganado, plus 34/35 (claws, on the forearms 8/14) and 36/37 (on the chest).
+- Leon:
+  - 26-28, 32, 33: face;
+  - 29/30: on the chest;
+  - 31: on 17 (holster);
+  - 34-63: fingers;
+  - 64-85: hair bones;
+  - 86-109: jacket bones;
+  - 110: twin of 3;
+  - 111/112, 115/116: on the chest;
+  - 113/114: twins of 6/12;
+  - 117/118: twins of 8/14.
+  
+  Hair, jacket and holster are driven by `moveCloth`, which runs after the player hook, so they follow the ragdoll.
+
+**Twin parts** (same parent and offset as a simulated part: 6/12, Leon's 113/114/117/118 and 110) keep their start-of-ragdoll offset to that simulated part, rather than their animated local transform. Otherwise the skin weighted to them would stay behind.
 
 - One table per skeleton type with 12 simulated bodies: pelvis, spine/chest, head, upper and lower arms, upper and lower legs. Hands and feet stay locked to the forearm and shin. Each entry has a capsule radius, joint type and limits, and a share of the mass.
 - Starting values from Jolt's `Samples/Utils/RagdollLoader.cpp`: 12-body human, capsule sizes, swing/twist limits, hinge knees and elbows.

@@ -23,6 +23,7 @@
 //
 // Phase 0: Jolt is set up (allocator, factory, types) and checked with a smoke test: a sphere dropped onto a box in a
 // throwaway physics system must come to rest on it.
+// Phase 1: the hook points are looked up and logged (not patched). The parts debug UI is in RagdollDebug.cpp.
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Jolt's reporting
@@ -114,6 +115,32 @@ static bool Ragdoll_SmokeTest()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Hook points (found, not patched yet; see RAGDOLL_PLAN.md, "PC findings")
+
+// cEm10::move: partsWorldCalc, em10ScaleCompress, em10BombNeckMove, partsFixAdjust, PartsWorldPosCalc. The ragdoll pose
+// goes in right after partsWorldCalc (+2), so the squash, the headless neck, weapons, caps and cloth all use it.
+static uint8_t* s_em10PartsWorldCalc = nullptr;
+
+// cPlayer::move: the second PartsWorldPosCalc (+1), right before Wep->move and moveCloth.
+static uint8_t* s_plPartsWorldPosCalc = nullptr;
+
+static void Ragdoll_FindHookPoints()
+{
+	auto pattern = hook::pattern("8B CE E8 ? ? ? ? 8B CE E8 ? ? ? ? E8 ? ? ? ? 8B CE E8 ? ? ? ? 56 E8");
+	if (pattern.size() == 1)
+		s_em10PartsWorldCalc = pattern.get_first<uint8_t>(2);
+
+	pattern = hook::pattern("56 E8 ? ? ? ? 8B 8E D8 07 00 00 83 C4 04 E8");
+	if (pattern.size() == 1)
+		s_plPartsWorldPosCalc = pattern.get_first<uint8_t>(1);
+
+	spd::log()->info("{} -> cEm10::move partsWorldCalc call: {}, cPlayer::move PartsWorldPosCalc call: {}", __FUNCTION__,
+		(void*)s_em10PartsWorldCalc, (void*)s_plPartsWorldPosCalc);
+	if (!s_em10PartsWorldCalc || !s_plPartsWorldPosCalc)
+		spd::log()->error("{} -> hook point not found", __FUNCTION__);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 static bool s_joltReady = false;
 
@@ -137,4 +164,6 @@ void re4t::init::Ragdoll()
 		JPH::GetConfigurationString());
 
 	s_joltReady = Ragdoll_SmokeTest();
+
+	Ragdoll_FindHookPoints();
 }

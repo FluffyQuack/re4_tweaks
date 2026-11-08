@@ -103,6 +103,9 @@
     <ClCompile Include="Ragdoll.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
+    <ClCompile Include="RagdollDebug.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
     <ClCompile Include="DisplayTweaks.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
