@@ -5,18 +5,24 @@
 #include "dllmain.h"
 #include "Game.h"
 #include "Utils.h"
+#include "Ragdoll.h"
 #include "imgui.h"
 
-// Ragdoll phase 1: a "Parts (ragdoll)" section in the Em Manager, for mapping each skeleton's parts to ragdoll bodies.
+// The "Parts (ragdoll)" section in the Em Manager.
 //
 // For the selected model it lists every part (index, parent, length to the parent, local position, world position), can
 // draw the skeleton and the part indices over the game, highlight one part, and copy or log the whole list.
+//
+// It can also turn the selected model into a ragdoll on the spot (with a push away from the player, or backwards for the
+// player), and draw every ragdoll's bodies.
 
 namespace
 {
 	bool s_drawSkeleton = true;
 	bool s_drawIndices = true;
 	int s_highlight = -1;
+	bool s_drawBodies = true;
+	float s_push = 3.0f; // m/s
 
 	struct PartRow
 	{
@@ -80,20 +86,71 @@ namespace
 		return out;
 	}
 
-	void DrawOverlay(cModel* model, const std::vector<PartRow>& rows)
+	bool ToScreen(const Vec& w, ImVec2& out)
 	{
 		GLOBAL_WK* pG = GlobalPtr();
 		ImGuiIO& io = ImGui::GetIO();
-		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+		Vec s;
+		if (!WorldToScreen(w, s, pG->Camera_74.v_mat_30, pG->Camera_74.CamPoint_A4.Fovy_1C, io.DisplaySize.x, io.DisplaySize.y))
+			return false;
+		out = ImVec2(s.x, s.y);
+		return true;
+	}
 
-		auto toScreen = [&](const Vec& w, ImVec2& out) -> bool
+	// Each ragdoll body: its capsule's axis, with the radius as a circle at each end (green awake, grey asleep)
+	void DrawBodies()
+	{
+		std::vector<ragdoll::DebugCapsule> caps;
+		ragdoll::GetDebugCapsules(caps);
+
+		GLOBAL_WK* pG = GlobalPtr();
+		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+		const Vec camPos = pG->Camera_74.CamPoint_A4.Campos_0;
+		const float screenH = ImGui::GetIO().DisplaySize.y;
+		const float fovRad = pG->Camera_74.CamPoint_A4.Fovy_1C / 1.3f * 3.14159265f / 180.0f;
+
+		for (const auto& c : caps)
 		{
-			Vec s;
-			if (!WorldToScreen(w, s, pG->Camera_74.v_mat_30, pG->Camera_74.CamPoint_A4.Fovy_1C, io.DisplaySize.x, io.DisplaySize.y))
-				return false;
-			out = ImVec2(s.x, s.y);
-			return true;
-		};
+			ImVec2 a, b;
+			if (!ToScreen(c.a, a) || !ToScreen(c.b, b))
+				continue;
+
+			const ImU32 col = c.awake ? IM_COL32(80, 255, 120, 220) : IM_COL32(170, 170, 170, 200);
+			dl->AddLine(a, b, col, 2.0f);
+
+			// Rough on-screen radius at each end
+			for (const Vec* w : { &c.a, &c.b })
+			{
+				Vec d = *w - camPos;
+				float dist = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+				if (dist < 1.0f || fovRad <= 0.0f)
+					continue;
+				float r = c.radius / (dist * tanf(0.5f * fovRad)) * 0.5f * screenH;
+				dl->AddCircle(w == &c.a ? a : b, r, col, 16, 1.0f);
+			}
+		}
+	}
+
+	// Away from the player, a little upwards; backwards for the player
+	Vec PushFor(cModel* model, float speed)
+	{
+		Vec dir;
+		cModel* player = (cModel*)PlayerPtr();
+		if (model == player || !player)
+			dir = Vec(-model->mat_C[0][2], 0.0f, -model->mat_C[2][2]);
+		else
+			dir = Vec(model->pos_94.x - player->pos_94.x, 0.0f, model->pos_94.z - player->pos_94.z);
+
+		float len = sqrtf(dir.x * dir.x + dir.z * dir.z);
+		if (len < 1e-3f)
+			return Vec(0.0f, 0.2f * speed, 0.0f);
+		return Vec(dir.x / len * speed, 0.2f * speed, dir.z / len * speed);
+	}
+
+	void DrawOverlay(cModel* model, const std::vector<PartRow>& rows)
+	{
+		ImDrawList* dl = ImGui::GetBackgroundDrawList();
+		auto toScreen = ToScreen;
 
 		const ImU32 boneCol = IM_COL32(80, 220, 255, 200);
 		const ImU32 highCol = IM_COL32(255, 220, 0, 255);
@@ -156,6 +213,31 @@ void RagdollDebug_PartsUI(cModel* model)
 	ImGui::Text("%d parts, parts y %.1f..%.1f (height %.1f), root y %.1f", int(rows.size()), minY, maxY, maxY - minY,
 		model->pos_94.y);
 
+	// Ragdoll test
+	ImGui::Separator();
+	if (ragdoll::IsActive(model))
+	{
+		if (ImGui::Button("Stop ragdoll"))
+			ragdoll::Stop(model);
+	}
+	else if (ragdoll::Supported(model))
+	{
+		if (ImGui::Button("Ragdoll"))
+			ragdoll::Start(model, PushFor(model, s_push));
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(120.0f * esHook._cur_monitor_dpi);
+		ImGui::SliderFloat("Push (m/s)", &s_push, 0.0f, 15.0f, "%.1f");
+	}
+	else
+		ImGui::TextDisabled("Ragdoll: not supported for this model");
+
+	ImGui::Text("Ragdolls: %d, room collision pieces: %d", ragdoll::ActiveCount(), ragdoll::WorldBodyCount());
+	ImGui::SameLine();
+	if (ImGui::Button("Stop all"))
+		ragdoll::StopAll();
+	ImGui::Checkbox("Draw ragdoll bodies", &s_drawBodies);
+	ImGui::Separator();
+
 	if (ImGui::Button("Copy list to clipboard"))
 		ImGui::SetClipboardText(BuildText(model, rows, minY, maxY).c_str());
 	ImGui::SameLine();
@@ -196,4 +278,6 @@ void RagdollDebug_PartsUI(cModel* model)
 
 	if (s_drawSkeleton || s_drawIndices)
 		DrawOverlay(model, rows);
+	if (s_drawBodies)
+		DrawBodies();
 }

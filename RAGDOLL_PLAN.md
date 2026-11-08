@@ -80,7 +80,21 @@ The player sequence is also as in the decomp:
 
 `Ragdoll.cpp` looks up both hook points at startup and logs them. Nothing is patched yet.
 
-## Phase 2: physics world (`dllmain\Ragdoll.cpp`)
+## Phase 2: physics world (`dllmain\Ragdoll.cpp`, `RagdollWorld.cpp`)
+
+**Done**, as built:
+- The physics system is created with the first ragdoll (not at DLL load).
+- Collision pieces:
+  - Each `cSat` piece's triangles are baked into world space, with the body at the origin. Each triangle is wound to face along the game's normal for it, because Jolt ignores back faces.
+  - A piece whose matrix changes after it was built becomes kinematic and follows the change (current matrix × inverse of the build matrix).
+  - Pieces are rebuilt when their slot holds different data, and removed while turned off.
+- Stepping:
+  - Lazily, at the first hooked pose of each game update (`frameCounter_530C` changed), so it pauses with the game.
+  - Fixed 60 Hz substeps, at most 4 per update.
+  - Only while ragdolls exist.
+- Ragdoll-against-ragdoll collision is always on for now (the setting comes in Phase 6).
+
+The original design notes follow.
 
 - **Units and coordinates:**
   - 1 m = 1000 units, Y-up, gravity 9.81 m/s².
@@ -141,7 +155,7 @@ Lengths and capsule sizes are therefore measured from the live pose at the start
 | 20 / 24 | 19 / 23 | -439.5 Y | ankle: foot | Follows (animated local) |
 | 21 / 25 | 20 / 24 | -91 Y, +82-87 Z | toe | Follows (animated local) |
 
-That's 13 bodies: pelvis, lower spine, chest, head, and 2 each of upper arm, lower arm, thigh and shin. The Jolt sample's 12, plus a spine split.
+That's 12 bodies: pelvis, lower spine, chest, head, and 2 each of upper arm, lower arm, thigh and shin. It's the same set as the Jolt sample's 12-body human.
 
 **Bone directions in the parts' local frames** (Jolt twist axes):
 - right arm: -X;
@@ -169,6 +183,49 @@ That's 13 bodies: pelvis, lower spine, chest, head, and 2 each of upper arm, low
   Hair, jacket and holster are driven by `moveCloth`, which runs after the player hook, so they follow the ragdoll.
 
 **Twin parts** (same parent and offset as a simulated part: 6/12, Leon's 113/114/117/118 and 110) keep their start-of-ragdoll offset to that simulated part, rather than their animated local transform. Otherwise the skin weighted to them would stay behind.
+
+### As built (`RagdollRig.cpp`)
+
+**Done.** All of it is defined in the bind pose (T-pose, no rotations), so a body's frame is its part's frame and a body's transform is its part's world transform without scale.
+
+- **Model check.** A model counts as this skeleton when parts 1-25 have the expected parents and bind offsets. Its scale is measured from thigh and upper-arm lengths in the live pose. One `RagdollSettings` is built per scale (rounded to 0.01) and shared.
+- **Capsules** (game units at scale 1):
+
+  | Body | Shape | Radius |
+  |---|---|---|
+  | Pelvis | across X, half 80 | 100 |
+  | Spine | across X, half 70 | 105 |
+  | Chest | across X, half 95 | 110 |
+  | Head | along Y, half 40 | 95 |
+  | Upper arms | elbow to shoulder | 50 |
+  | Forearms | elbow to wrist, +90 for the hand | 42 |
+  | Thighs | hip to knee | 70 |
+  | Shins | knee to ankle, +40 | 55 |
+
+  Mass comes from volume at Jolt's default density, about 69 kg at scale 1.
+- **Joints.** Elbows and knees are hinges, 0° in the bind pose:
+  - elbows flex forward, -3° to 140°;
+  - knees flex backward, -3° to 145°.
+  
+  The rest are swing-twist, each cone centred on a tilted rest direction because cones are symmetric:
+
+  | Joint | Tilt of the cone | Forward/back | Sideways | Twist |
+  |---|---|---|---|---|
+  | Spine, chest | 5° forward | 25° | 20° | ±20-25° |
+  | Neck | 10° forward | 40° | 30° | ±50° |
+  | Shoulders | down and forward | 75° | 85° up/down | ±70° |
+  | Hips | 30° forward | 70° (100° forward, 40° back) | 35° | ±25° |
+
+  Friction torque is 1 N·m on swing-twist joints and 0.5 N·m on hinges.
+- **Bodies:** linear casting (CCD) for thin walls and fast limbs; friction 0.8, restitution 0, damping 0.1 linear / 0.4 angular.
+- **Parts that aren't simulated** keep their start-of-ragdoll offset to the part they hang off (frozen, not animated), so a dead body doesn't keep twitching with its death animation. Twins hang off the simulated part they duplicate.
+- **Tested outside the game.** A verbatim copy of `RagdollRig.cpp`, built against Jolt, was put through five drops: T-pose falling back or pushed forward (scale 1.0 and 1.25), tumbling from 2 m, and a hard shotgun-like push. In every case:
+  - the body ends up lying flat (pelvis 0.10-0.15 m up), sinking into the floor by at most the 2 cm penetration slop;
+  - joints stay within 0.7 mm of each other;
+  - it goes to sleep in about 2 s;
+  - elbows only bend forward and knees only backward, within their limits.
+
+The original design notes follow.
 
 - One table per skeleton type with 12 simulated bodies: pelvis, spine/chest, head, upper and lower arms, upper and lower legs. Hands and feet stay locked to the forearm and shin. Each entry has a capsule radius, joint type and limits, and a share of the mass.
 - Starting values from Jolt's `Samples/Utils/RagdollLoader.cpp`: 12-body human, capsule sizes, swing/twist limits, hinge knees and elbows.

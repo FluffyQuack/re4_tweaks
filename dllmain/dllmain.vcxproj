@@ -170,6 +170,8 @@ echo | set /p dummyName=#define GIT_BRANCH ^"%VAR%^" &gt;&gt; gitparams.h</Comma
     <ClCompile Include="QTEFixes.cpp" />
     <ClCompile Include="Ragdoll.cpp" />
     <ClCompile Include="RagdollDebug.cpp" />
+    <ClCompile Include="RagdollRig.cpp" />
+    <ClCompile Include="RagdollWorld.cpp" />
     <ClCompile Include="MathReimpl.cpp" />
     <ClCompile Include="RoomInfo.cpp" />
     <ClCompile Include="cfgMenu.cpp" />
@@ -306,6 +308,8 @@ echo | set /p dummyName=#define GIT_BRANCH ^"%VAR%^" &gt;&gt; gitparams.h</Comma
     <ClInclude Include="UI_DebugWindows.h" />
     <ClInclude Include="UI_Utility.h" />
     <ClInclude Include="Utils.h" />
+    <ClInclude Include="Ragdoll.h" />
+    <ClInclude Include="RagdollInternal.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="dllmain.rc" />

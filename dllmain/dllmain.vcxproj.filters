@@ -106,6 +106,12 @@
     <ClCompile Include="RagdollDebug.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
+    <ClCompile Include="RagdollRig.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
+    <ClCompile Include="RagdollWorld.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
     <ClCompile Include="DisplayTweaks.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
@@ -286,6 +292,12 @@
       <Filter>external\eHooking</Filter>
     </ClInclude>
     <ClInclude Include="Utils.h">
+      <Filter>dllmain</Filter>
+    </ClInclude>
+    <ClInclude Include="Ragdoll.h">
+      <Filter>dllmain</Filter>
+    </ClInclude>
+    <ClInclude Include="RagdollInternal.h">
       <Filter>dllmain</Filter>
     </ClInclude>
     <ClInclude Include="dllmain.h">
