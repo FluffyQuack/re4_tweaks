@@ -60,6 +60,11 @@ bool ParseMouseTurnModifierCombo(std::string_view in_combo);
 bool ParseToolMenuKeyCombo(std::string_view in_combo);
 bool ParseJetSkiTrickCombo(std::string_view in_combo);
 
+// CameraTweaks.cpp: whether a weapon's aim starts at the camera's pitch (mouse with CameraImprovements, controller with
+// RightStickAimPitch), and that pitch as CameraControl::getCameraPitch returns it
+bool AimStartsFromCamera();
+float CameraAimStartPitch();
+
 // EndSceneHook
 struct EndSceneHook
 {

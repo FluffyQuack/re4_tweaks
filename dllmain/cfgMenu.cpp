@@ -1220,6 +1220,34 @@ void cfgMenuRender()
 						ImGui::TextWrapped("Use analog directional input to turn when moving forwards and backwards, similar to Resident Evil 5's type A/B controls.");
 					}
 
+					// RightStickAimPitch
+					if ((OptionsFilter.PassFilter("RightStickAimPitch") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("RightStickAimPitch", &re4t::cfg->bRightStickAimPitch);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("When you start aiming while looking up or down with the right stick, the aim starts at that height instead of straight ahead.");
+						ImGui::TextWrapped("(The vanilla game only keeps the left/right part of the camera direction.)");
+					}
+
+					// CircularRightStickCamera
+					if ((OptionsFilter.PassFilter("CircularRightStickCamera") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("CircularRightStickCamera", &re4t::cfg->bCircularRightStickCamera);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("Makes looking around with the right stick reach as far on the diagonals as it does straight left, right, up and down, and uses one round deadzone instead of one per axis.");
+						ImGui::TextWrapped("Looking up and down also uses the stick's whole range instead of reaching the limit at half way.");
+					}
+
 					// AllowReloadWithoutAiming_controller
 					if ((OptionsFilter.PassFilter("AllowReloadWithoutAiming") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
 					{

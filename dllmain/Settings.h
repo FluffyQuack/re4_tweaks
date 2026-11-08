@@ -101,6 +101,8 @@ public:
 	bool bAllowReloadWithoutAiming_controller = false;
 	bool bReloadWithoutZoom_controller = false;
 	bool bSmoothAnalogTurning = false;
+	bool bRightStickAimPitch = false;
+	bool bCircularRightStickCamera = false;
 
 	// FRAME RATE
 	bool bMotionFixes = true;

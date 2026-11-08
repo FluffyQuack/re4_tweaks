@@ -232,6 +232,8 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		re4t::cfg->fXinputDeadzone = ini.getFloat("CONTROLLER", "XinputDeadzone", re4t::cfg->fXinputDeadzone);
 		re4t::cfg->fXinputDeadzone = fmin(fmax(re4t::cfg->fXinputDeadzone, 0.0f), 3.5f); // limit between 0.0 - 3.5
 		re4t::cfg->bSmoothAnalogTurning = ini.getBool("CONTROLLER", "SmoothAnalogTurning", re4t::cfg->bSmoothAnalogTurning);
+		re4t::cfg->bRightStickAimPitch = ini.getBool("CONTROLLER", "RightStickAimPitch", re4t::cfg->bRightStickAimPitch);
+		re4t::cfg->bCircularRightStickCamera = ini.getBool("CONTROLLER", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera);
 		re4t::cfg->bAllowReloadWithoutAiming_controller = ini.getBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		re4t::cfg->bReloadWithoutZoom_controller = ini.getBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
 
@@ -691,6 +693,8 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setBool("CONTROLLER", "OverrideXinputDeadzone", re4t::cfg->bOverrideXinputDeadzone);
 		ini.setFloat("CONTROLLER", "XinputDeadzone", re4t::cfg->fXinputDeadzone);
 		ini.setBool("CONTROLLER", "SmoothAnalogTurning", re4t::cfg->bSmoothAnalogTurning);
+		ini.setBool("CONTROLLER", "RightStickAimPitch", re4t::cfg->bRightStickAimPitch);
+		ini.setBool("CONTROLLER", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera);
 		ini.setBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		ini.setBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
 
@@ -1050,6 +1054,8 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "OverrideXinputDeadzone", re4t::cfg->bOverrideXinputDeadzone ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "XinputDeadzone", re4t::cfg->fXinputDeadzone);
 	spd::log()->info("| {:<30} | {:>15} |", "SmoothAnalogTurning", re4t::cfg->bSmoothAnalogTurning ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "RightStickAimPitch", re4t::cfg->bRightStickAimPitch ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller ? "true" : "false");
 	spd::log()->info("+--------------------------------+-----------------+");

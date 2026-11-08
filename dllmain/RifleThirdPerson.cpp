@@ -5,6 +5,7 @@
 #include "dllmain.h"
 #include "Game.h"
 #include "Settings.h"
+#include "Patches.h"
 
 // UnscopedRifleThirdPerson: the rifle and semi-auto rifle without a scope attached aim in third person, like the other
 // guns, instead of switching to the scope camera.
@@ -46,6 +47,7 @@ namespace
 	constexpr uint32_t c_plStatScope = 0x10; // F_SCOPE
 	constexpr uint32_t c_plWep = 0x7D8;      // cPlWep*
 	constexpr uint32_t c_wepObj = 0x34;      // cPlWep::m_pWep (cObjWep*)
+	constexpr uint32_t c_wepPitch = 0x28;    // cPlWep::pitch (radians)
 
 	// cPlBody
 	constexpr uint32_t c_bodyModel = 0x38;
@@ -207,13 +209,26 @@ namespace
 
 	// ---- The rifle's routine ----
 
-	// Ready step 0 (the draw): the aim starts level
+	// Ready step 0 (the draw): the aim starts level, or at the camera's pitch as the other guns do (PlSetLockPitch: a
+	// positive pitch is doubled, and m3r is the pitch over 90 degrees)
 	void(__cdecl* wep09_r3_ready00)(cModel* pl);
 	void __cdecl wep09_r3_ready00_hook(cModel* pl)
 	{
 		wep09_r3_ready00(pl);
-		if (Active() && s_m3r)
-			s_m3r->val0 = s_m3r->val1 = 0.0f;
+		if (!Active() || !s_m3r)
+			return;
+
+		float pitch = 0.0f;
+		if (AimStartsFromCamera())
+		{
+			pitch = CameraAimStartPitch();
+			if (pitch > 0.0f)
+				pitch += pitch;
+			pitch = std::clamp(pitch, -c_maxRate * c_halfPi, c_maxRate * c_halfPi);
+		}
+		if (uint8_t* wep = *reinterpret_cast<uint8_t**>(reinterpret_cast<uint8_t*>(pl) + c_plWep))
+			*reinterpret_cast<float*>(wep + c_wepPitch) = pitch;
+		s_m3r->val0 = s_m3r->val1 = pitch / c_halfPi;
 	}
 
 	// Set step 0 (the aim idle starts): the three-way blend PlWepLockCtrl moves gets the aim idle on all three, so it

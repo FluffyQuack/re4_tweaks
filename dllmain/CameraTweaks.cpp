@@ -24,22 +24,96 @@ int8_t* AnalogRY_9;
 
 uintptr_t* knife_r3_set40_jmpAddr;
 
+// From ControllerTweaks.cpp
+extern int16_t RawAnalogRX;
+extern int16_t RawAnalogRY;
+extern int* g_XInputDeadzone_RS;
+
+namespace
+{
+	// RightStickAimPitch: the camera's up/down ratio (m_depression_ratio) from just before the aim camera took it over
+	// (calcDepressionRatio sets it to the weapon's pitch while aiming)
+	bool s_camAiming = false;
+	float s_preAimDepression = 0.0f;
+
+	// CircularRightStickCamera: the stick's Y for this calcDepressionRatio call, in AnalogRY units
+	bool s_useCircularY = false;
+	float s_circularY = 0.0f;
+
+	// The stick magnitude that counts as fully pushed (sticks don't all reach 1.0 in every direction)
+	constexpr float c_stickFull = 0.95f;
+	// The shape a fully pushed stick traces: |x|^p + |y|^p = 1. 2 is a circle (a diagonal reaches 71% of each axis' limit),
+	// higher is a rounder square (4: 84%). The vanilla per-axis deadzones made it closer to a diamond.
+	constexpr float c_reachShape = 4.0f;
+
+	// The right stick as a point inside that shape: one round deadzone instead of one per axis, then pushed out so a
+	// diagonal reaches nearly as far as a straight push. Up and right are positive.
+	void CircularRightStick(float& x, float& y)
+	{
+		float dz = 0.0f;
+		if (LastUsedDevice() == InputDevices::XinputController)
+		{
+			x = std::clamp(RawAnalogRX / 32767.0f, -1.0f, 1.0f);
+			y = std::clamp(RawAnalogRY / 32767.0f, -1.0f, 1.0f);
+			dz = (*g_XInputDeadzone_RS & 0xFFFF) / 32767.0f;
+		}
+		else
+		{
+			// DirectInput: only the per-axis values are known
+			x = *AnalogRX_8 / 127.0f;
+			y = *AnalogRY_9 / 127.0f;
+		}
+
+		const float m = sqrtf(x * x + y * y);
+		if (m <= dz || m < 1e-4f)
+		{
+			x = y = 0.0f;
+			return;
+		}
+		const float full = std::max(c_stickFull, dz + 0.05f);
+		const float r = std::min((m - dz) / (full - dz), 1.0f);
+
+		const float c = fabsf(x) / m;
+		const float s = fabsf(y) / m;
+		const float k = powf(powf(c, c_reachShape) + powf(s, c_reachShape), -1.0f / c_reachShape);
+		x = x / m * r * k;
+		y = y / m * r * k;
+	}
+}
+
+bool AimStartsFromCamera()
+{
+	if (isKeyboardMouse())
+		return re4t::cfg->bCameraImprovements;
+	return re4t::cfg->bRightStickAimPitch && isController();
+}
+
 double CameraControl__getCameraPitch_hook()
 {
-	if (!re4t::cfg->bCameraImprovements)
-		return 0.0;
+	double angle = 0.0;
 
 	if (isController())
-		return 0.0;
+	{
+		if (!re4t::cfg->bRightStickAimPitch)
+			return 0.0;
 
-	// We originally used fCameraPosY, but that value gets reset early in some cases, such as when using the knife, leading 
-	// to it always reading "0.0". This really makes me think this whole CameraControl::getCameraPitch() stuff either never got too far into the 
-	// game's development, or everything was stripped right after the GC release, with future changes not accounting for this legacy feature.
-	double angle = (*fMousePosY * 127.0f) / *C_RANGE_1097;
+		// The camera's up/down ratio, with the invert setting already applied: the same value the mouse one below ends up as
+		angle = s_camAiming ? s_preAimDepression : *fCameraPosY;
+	}
+	else
+	{
+		if (!re4t::cfg->bCameraImprovements)
+			return 0.0;
 
-	// Invert the value if needed.
-	if (!FlagIsSet(SystemSavePtr()->flags_CONFIG_0, uint32_t(Flags_CONFIG::CFG_AIM_REVERSE)))
-		angle = -angle;
+		// We originally used fCameraPosY, but that value gets reset early in some cases, such as when using the knife, leading 
+		// to it always reading "0.0". This really makes me think this whole CameraControl::getCameraPitch() stuff either never got too far into the 
+		// game's development, or everything was stripped right after the GC release, with future changes not accounting for this legacy feature.
+		angle = (*fMousePosY * 127.0f) / *C_RANGE_1097;
+
+		// Invert the value if needed.
+		if (!FlagIsSet(SystemSavePtr()->flags_CONFIG_0, uint32_t(Flags_CONFIG::CFG_AIM_REVERSE)))
+			angle = -angle;
+	}
 
 	// By default we need to decrease the positive Y value a bit.
 	// This value can change depending on the weapon.
@@ -59,6 +133,11 @@ double CameraControl__getCameraPitch_hook()
 		angle = angle - (angle / 4);
 
 	return angle;
+}
+
+float CameraAimStartPitch()
+{
+	return float(CameraControl__getCameraPitch_hook());
 }
 
 // MakeInline apparently can't change regs.esp, so we need to hook this differently.
@@ -216,6 +295,10 @@ void re4t::init::CameraTweaks()
 	{
 		void operator()(injector::reg_pack& regs)
 		{
+			// Only reached while not aiming
+			s_camAiming = false;
+			s_useCircularY = false;
+
 			if (re4t::cfg->bCameraImprovements && isKeyboardMouse())
 			{
 				// Invert the X float if it reaches its limit.
@@ -230,6 +313,21 @@ void re4t::init::CameraTweaks()
 				*C_RANGE_1097 = 42.3f;
 
 				*(float*)(regs.ebp - 0x8) = *fMousePosX * 127.0f;
+			}
+			else if (re4t::cfg->bCircularRightStickCamera && isController())
+			{
+				*C_RANGE_1097 = fDefaultC_RANGE;
+
+				// X: a full push turns the camera as far as the vanilla one does (127, ~129 degrees). Y: a full push is the
+				// up/down limit (C_RANGE), where the vanilla one reached it at less than half way.
+				float x, y;
+				CircularRightStick(x, y);
+				*(float*)(regs.ebp - 0x8) = x * 127.0f;
+				s_circularY = y * fDefaultC_RANGE;
+				s_useCircularY = true;
+
+				// The stick-at-rest test reads the int Y here (the Y hook below loads s_circularY instead)
+				*(int32_t*)(regs.ebp - 0x4) = (s_circularY != 0.0f) ? 1 : 0;
 			}
 			else
 			{
@@ -250,6 +348,8 @@ void re4t::init::CameraTweaks()
 
 			if (re4t::cfg->bCameraImprovements && isKeyboardMouse())
 				fNewY = -(*fMousePosY * 127.0f);
+			else if (s_useCircularY)
+				fNewY = s_circularY;
 			else
 				fNewY = (float)*AnalogRY_9;
 
@@ -273,6 +373,13 @@ void re4t::init::CameraTweaks()
 
 			float tmp = 0.0f;
 			__asm {fstp tmp}
+
+			// The first aiming frame: keep the free camera's up/down ratio for getCameraPitch
+			if (!s_camAiming)
+			{
+				s_preAimDepression = *(float*)(regs.esi + 0x204);
+				s_camAiming = true;
+			}
 
 			*(float*)(regs.esi + 0x204) = tmp;
 
@@ -460,7 +567,7 @@ void re4t::init::CameraTweaks()
 		{
 			void operator()(injector::reg_pack& regs)
 			{
-				if (re4t::cfg->bCameraImprovements && isKeyboardMouse())
+				if (AimStartsFromCamera())
 					regs.ef |= (1 << regs.zero_flag);
 				else
 					regs.ef &= ~(1 << regs.zero_flag);
@@ -486,7 +593,7 @@ void re4t::init::CameraTweaks()
 		{
 			void operator()(injector::reg_pack& regs)
 			{
-				if (!re4t::cfg->bCameraImprovements || isController())
+				if (!AimStartsFromCamera())
 				{
 					*wepPitch = 0.0f;
 				}
@@ -505,7 +612,7 @@ void re4t::init::CameraTweaks()
 		{
 			void operator()(injector::reg_pack& regs)
 			{
-				if (!re4t::cfg->bCameraImprovements || isController())
+				if (!AimStartsFromCamera())
 				{
 					*wepPitch = 0.0f;
 				}
@@ -557,7 +664,7 @@ void re4t::init::CameraTweaks()
 		{
 			void operator()(injector::reg_pack& regs)
 			{
-				if (!re4t::cfg->bCameraImprovements || isController())
+				if (!AimStartsFromCamera())
 					*wepPitch = 0.0f;
 			}
 		}; injector::MakeInline<wep19_r3_ready00>(pattern.count(1).get(0).get<uint32_t>(0), pattern.count(1).get(0).get<uint32_t>(6));
