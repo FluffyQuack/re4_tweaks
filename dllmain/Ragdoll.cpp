@@ -232,6 +232,18 @@ namespace ragdoll
 			return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
 		}
 
+		// How much of the push each body gets (by c_bodyPart): more on the upper body than the legs, so a hit topples the
+		// body over (the feet's friction holds them) instead of sliding it or dropping it on the spot
+		constexpr float c_pushWeight[c_numBodies] = {
+			0.8f,        // pelvis
+			1.0f, 1.25f, // spine, chest
+			1.25f,       // head
+			1.1f, 1.1f,  // right upper / lower arm
+			1.1f, 1.1f,  // left upper / lower arm
+			0.55f, 0.3f, // right thigh / shin
+			0.55f, 0.3f, // left thigh / shin
+		};
+
 		constexpr float c_maxStartSpeed = 6.0f; // m/s, what a part keeps of its animation's movement
 		constexpr float c_maxStartUp = 3.0f;    // m/s, of which upwards
 
@@ -472,7 +484,7 @@ namespace ragdoll
 						usedPelvis = v.Length();
 					}
 				}
-				bi.SetLinearVelocity(in.ragdoll->GetBodyID(b), v + pushV);
+				bi.SetLinearVelocity(in.ragdoll->GetBodyID(b), v + pushV * c_pushWeight[b]);
 
 				Rig_Capsule(b, scale, in.capA[b], in.capB[b], in.capR[b]);
 			}
@@ -797,18 +809,18 @@ namespace ragdoll
 			switch (wep)
 			{
 			case 0x07: case 0x08: case 0x21: // shotguns: a near hit blows them away
-				return distSq < 36e6f ? 6.0f : 2.5f;
+				return distSq < 36e6f ? 7.5f : 3.5f;
 			case 0x05: case 0x06: case 0x09: case 0x0A: case 0x0D: case 0x0F: case 0x12: case 0x13: case 0x1C:
 			case 0x29: case 0x2C: case 0x2D: // rifles, magnum, rocket, blasts
-				return 4.5f;
+				return 6.0f;
 			case 0x22: case 0x23: case 0x24: case 0x25: // kicks, suplex
-				return 4.0f;
+				return 2.5f;
 			case 0x00: case 0x14: // hand, knife
 				return 1.2f;
 			case 0x17: case 0x2A: // flash
 				return 0.3f;
 			default: // bullets
-				return 2.0f;
+				return 3.5f;
 			}
 		}
 
@@ -913,19 +925,20 @@ namespace ragdoll
 			}
 
 			const float speed = WeaponPush(dmg.m_Wep_6, dmg.m_Dist_mb_14) * g_deathPushScale;
-			const Vec up(0.0f, 0.15f * speed, 0.0f);
+			const Vec up(0.0f, 0.1f * speed, 0.0f);
 			spd::log()->info("ragdoll -> {} died in routine {:02X}-{:02X} (was {:02X}-{:02X}), weapon 0x{:02X}, hit part {}{}, push {:.1f} m/s "
 				"along ({:.2f}, {:.2f}, {:.2f})", (void*)model, r0, r1, prev.r0, prev.r1, int(dmg.m_Wep_6), part,
 				haveDir ? "" : " (no hit point)", speed, dir.x, dir.y, dir.z);
 
-			// 40% as a push on every body, 60% as an impulse where it was hit (69 kg at scale 1)
-			info.push = dir * (0.4f * speed) + up;
+			// 75% as a push on every body (weighted towards the upper body), 25% as an impulse where it was hit (69 kg at
+			// scale 1)
+			info.push = dir * (0.75f * speed) + up;
 			if (part >= 0 || haveDir)
 			{
 				const float mass = 69.0f * scale * scale * scale;
 				info.impulsePart = part >= 0 ? part : 0;
 				info.impulsePoint = JPH::Vec3(point.x, point.y, point.z) * c_toJolt;
-				info.impulse = JPH::Vec3(dir.x, dir.y, dir.z) * (0.6f * speed * mass);
+				info.impulse = JPH::Vec3(dir.x, dir.y, dir.z) * (0.25f * speed * mass);
 			}
 
 			if (!CreateInstance(model, info, true))
