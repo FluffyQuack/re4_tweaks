@@ -22,8 +22,11 @@
 //    speed (machine guns 1.7, others 1.0) and the Aiming Speed option: Slowest 0.8, Slow 0.9, Default 1.0, Fast 1.3,
 //    Fastest 1.6.
 //
-// Here, with a controller: the RE5 movement is applied to RE4's aim (the pitch blend m3r, at 45 degrees per 1.0 as RE4's
-// own lock-on aiming uses it, and the waist yaw, turning the body past the weapon's limit), and the original function
+// The 0.3 deadzone is a setting (RE5AimDeadzone, in percent). Below RE5's 30, the per-axis deadzone shrinks with it (it'd
+// otherwise keep a straight push of up to ~19% from moving the aim), so the aim starts moving just past the setting.
+//
+// Here, with a controller: the RE5 movement is applied to RE4's aim (the pitch blend m3r, converted with how far the gun
+// actually tilts for it, and the waist yaw, turning the body past the weapon's limit), and the original function
 // runs with the stick zeroed so its own stick movement adds nothing. Its d-pad aiming, limits, sway and motion blending
 // all still run. The sway (PlWepLockRand) is told the aim moved, as the original's stick movement would.
 
@@ -34,7 +37,7 @@ extern int RawAnalogLY;
 namespace
 {
 	// RE5's tuning (sParameter, read from the running game)
-	constexpr float c_inDeadzone = 0.3f;     // the stick's push, below which it's centred
+	constexpr float c_inDeadzone = 0.3f;     // the stick's push, below which it's centred (the RE5AimDeadzone default)
 	constexpr float c_full = 0.95f;          // a full push
 	constexpr float c_axisDeadzone = 0.1f;   // per axis, after the turbo curve
 	constexpr float c_degPerSec = 57.9f;     // full speed, both axes
@@ -50,8 +53,13 @@ namespace
 	constexpr Turbo c_turbo{ 3.0f, 4.0f, 0.5f };
 	constexpr Turbo c_turboRifle{ 2.0f, 6.0f, 0.4f };
 
-	// RE4: the aim pitch m3r per degree (1.0 is 45 degrees, as PlWepAutoTrack and the lock-on turn aim it at a target)
-	constexpr float c_degPerM3r = 45.0f;
+	// RE4: how far the gun tilts per 1.0 of the aim pitch m3r. Measured with the handgun: m3r 0 is -1.6 degrees, 1.0 is
+	// 71.3 and -1.0 is -61.3 (the up / down aim motions don't reach the same angle). RE4's own code disagrees with
+	// itself (45 degrees in PlWepAutoTrack, 90 in PlWepLockRand). The unscoped rifle's bend (RifleThirdPerson) is
+	// m3r * 90 degrees.
+	constexpr float c_degPerM3rUp = 73.0f;
+	constexpr float c_degPerM3rDown = 60.0f;
+	constexpr float c_degPerM3rRifle = 90.0f;
 	constexpr float c_degToRad = 0.017453292f;
 
 	// cPlayer
@@ -77,9 +85,8 @@ namespace
 	float s_turbo = 0.0f;
 	bool s_moved = false;
 
-	// Diagnostics: the weapon's actual pitch against m3r, to check c_degPerM3r
-	uint32_t s_lastLogFrame = 0;
-	float s_lastLoggedM3r = 100.0f;
+	// Diagnostics: the gun's actual pitch at the aim's limits, once per weapon and direction, to check c_degPerM3r*
+	int s_lastLogged = -1;
 
 	bool IsRifle(uint8_t wep)
 	{
@@ -97,12 +104,12 @@ namespace
 		}
 	}
 
-	float AxisDeadzone(float v)
+	float AxisDeadzone(float v, float dz)
 	{
 		const float a = fabsf(v);
-		if (a < c_axisDeadzone)
+		if (a < dz)
 			return 0.0f;
-		return copysignf(std::min((a - c_axisDeadzone) / (c_full - c_axisDeadzone), 1.0f), v);
+		return copysignf(std::min((a - dz) / (c_full - dz), 1.0f), v);
 	}
 
 	// The stick, right and up positive, through RE5's curve: each axis -1..1, the turbo updated
@@ -120,9 +127,12 @@ namespace
 			sy = *s_stickY / 127.0f;
 		}
 
+		const float deadzone = std::clamp(re4t::cfg->fRE5AimDeadzone / 100.0f, 0.0f, 0.9f);
+		const float axisDeadzone = c_axisDeadzone * std::min(deadzone / c_inDeadzone, 1.0f);
+
 		const float len = sqrtf(sx * sx + sy * sy);
 		float push = std::min(len, 1.0f);
-		if (push <= c_inDeadzone)
+		if (push <= deadzone || push < 1e-4f)
 			push = 0.0f;
 
 		s_turbo = std::clamp(s_turbo + (push >= c_full ? t.up : -t.down) * dt, 0.0f, 1.0f);
@@ -131,15 +141,17 @@ namespace
 		if (push == 0.0f)
 			return;
 		const float p = std::clamp((c_full - t.partial) * s_turbo + t.partial * push / c_full, 0.0f, 1.0f);
-		x = AxisDeadzone(sx / len * p);
-		y = AxisDeadzone(sy / len * p);
+		x = AxisDeadzone(sx / len * p, axisDeadzone);
+		y = AxisDeadzone(sy / len * p, axisDeadzone);
 	}
 
 	void LogPitch(cModel* pl)
 	{
 		GLOBAL_WK* pG = GlobalPtr();
-		const uint32_t frame = pG->frameCounter_530C;
-		if (frame - s_lastLogFrame < 15 || fabsf(s_m3r->val0 - s_lastLoggedM3r) < 0.1f)
+		if (fabsf(s_m3r->val0) < 0.99f)
+			return;
+		const int key = pG->weapon_no_4FC0 * 2 + (s_m3r->val0 > 0.0f ? 1 : 0);
+		if (key == s_lastLogged)
 			return;
 		uint8_t* wep = *reinterpret_cast<uint8_t**>(reinterpret_cast<uint8_t*>(pl) + c_plWep);
 		cModel* obj = wep ? *reinterpret_cast<cModel**>(wep + c_wepObj) : nullptr;
@@ -150,8 +162,7 @@ namespace
 		const float dx = -p->mat_C[0][0], dy = -p->mat_C[1][0], dz = -p->mat_C[2][0];
 		const float elev = atan2f(dy, sqrtf(dx * dx + dz * dz)) / c_degToRad;
 		spd::log()->info("RE5AimControls -> weapon 0x{:02X}: m3r {:.2f}, gun pitch {:.1f} degrees", int(pG->weapon_no_4FC0), s_m3r->val0, elev);
-		s_lastLogFrame = frame;
-		s_lastLoggedM3r = s_m3r->val0;
+		s_lastLogged = key;
 	}
 
 	void __cdecl PlWepLockCtrl_hook(cModel* pl, int a2)
@@ -178,9 +189,13 @@ namespace
 			const float degPerSec = c_degPerSec * c_speedSetting[setting] * WeaponSpeed(wepNo);
 
 			// Pitch: up raises m3r, unless the game's aim is inverted
-			float d = y * degPerSec * dt / c_degPerM3r;
+			float d = y * degPerSec * dt;
 			if (FlagIsSet(SystemSavePtr()->flags_CONFIG_0, uint32_t(Flags_CONFIG::CFG_AIM_REVERSE)))
 				d = -d;
+			if (wepNo == 0x09 || wepNo == 0x0A)
+				d /= c_degPerM3rRifle;
+			else
+				d /= (s_m3r->val1 > 0.0f || (s_m3r->val1 == 0.0f && d > 0.0f)) ? c_degPerM3rUp : c_degPerM3rDown;
 			s_m3r->val1 = std::clamp(s_m3r->val1 + d, -1.0f, 1.0f);
 			if (s_m3r->delay == 0.0f)
 				s_m3r->val0 = s_m3r->val1;

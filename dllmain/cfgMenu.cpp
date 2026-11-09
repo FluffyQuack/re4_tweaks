@@ -1281,6 +1281,17 @@ void cfgMenuRender()
 						re4t::cfg->HasUnsavedChanges |= ImGui::Combo("Aiming Speed", &re4t::cfg->iRE5AimSpeed, RE5AimSpeedNames, 5);
 						ImGui::EndDisabled();
 						ImGui::PopItemWidth();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("Deadzone: how far the stick has to be pushed before the aim moves, in percent of its travel (RE5 uses 30). Replaces XinputDeadzone while aiming.");
+
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Aim Deadzone").x);
+						ImGui::BeginDisabled(!re4t::cfg->bRE5AimControls);
+						ImGui::SliderFloat("Aim Deadzone", &re4t::cfg->fRE5AimDeadzone, 0.0f, 60.0f, "%.0f%%", ImGuiSliderFlags_AlwaysClamp);
+						if (ImGui::IsItemEdited())
+							re4t::cfg->HasUnsavedChanges = true;
+						ImGui::EndDisabled();
+						ImGui::PopItemWidth();
 					}
 
 					// AllowReloadWithoutAiming_controller

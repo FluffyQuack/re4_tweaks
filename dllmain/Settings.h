@@ -109,6 +109,7 @@ public:
 	float fCircularRightStickCameraTurn = 70.0f; // degrees at a full sideways push (vanilla: ~129)
 	bool bRE5AimControls = false;
 	int iRE5AimSpeed = 2; // RE5's Aiming Speed option, 0..4 (RE5AimSpeedNames)
+	float fRE5AimDeadzone = 30.0f; // percent of the stick's travel (RE5: 30)
 
 	// FRAME RATE
 	bool bMotionFixes = true;

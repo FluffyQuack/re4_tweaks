@@ -237,6 +237,8 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		re4t::cfg->fCircularRightStickCameraTurn = ini.getFloat("CONTROLLER", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
 		re4t::cfg->fCircularRightStickCameraTurn = fmin(fmax(re4t::cfg->fCircularRightStickCameraTurn, 30.0f), 130.0f); // limit between 30 - 130
 		re4t::cfg->bRE5AimControls = ini.getBool("CONTROLLER", "RE5AimControls", re4t::cfg->bRE5AimControls);
+		re4t::cfg->fRE5AimDeadzone = ini.getFloat("CONTROLLER", "RE5AimDeadzone", re4t::cfg->fRE5AimDeadzone);
+		re4t::cfg->fRE5AimDeadzone = fmin(fmax(re4t::cfg->fRE5AimDeadzone, 0.0f), 60.0f); // limit between 0 - 60
 		{
 			std::string RE5AimSpeedStr = ini.getString("CONTROLLER", "RE5AimSpeed", "");
 			for (int i = 0; i < 5; i++)
@@ -709,6 +711,7 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setFloat("CONTROLLER", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
 		ini.setBool("CONTROLLER", "RE5AimControls", re4t::cfg->bRE5AimControls);
 		ini.setString("CONTROLLER", "RE5AimSpeed", RE5AimSpeedNames[std::clamp(re4t::cfg->iRE5AimSpeed, 0, 4)]);
+		ini.setFloat("CONTROLLER", "RE5AimDeadzone", re4t::cfg->fRE5AimDeadzone);
 		ini.setBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		ini.setBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
 
@@ -1073,6 +1076,7 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
 	spd::log()->info("| {:<30} | {:>15} |", "RE5AimControls", re4t::cfg->bRE5AimControls ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "RE5AimSpeed", RE5AimSpeedNames[std::clamp(re4t::cfg->iRE5AimSpeed, 0, 4)]);
+	spd::log()->info("| {:<30} | {:>15} |", "RE5AimDeadzone", re4t::cfg->fRE5AimDeadzone);
 	spd::log()->info("| {:<30} | {:>15} |", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller ? "true" : "false");
 	spd::log()->info("+--------------------------------+-----------------+");
