@@ -10,6 +10,9 @@ enum MouseTurnTypes
 	TypeB
 };
 
+// RE5AimControls: RE5's Aiming Speed option names, slowest first
+static constexpr const char* RE5AimSpeedNames[5] = { "Slowest", "Slow", "Default", "Fast", "Fastest" };
+
 class re4t_cfg
 {
 public:
@@ -104,6 +107,8 @@ public:
 	bool bRightStickAimPitch = false;
 	bool bCircularRightStickCamera = false;
 	float fCircularRightStickCameraTurn = 70.0f; // degrees at a full sideways push (vanilla: ~129)
+	bool bRE5AimControls = false;
+	int iRE5AimSpeed = 2; // RE5's Aiming Speed option, 0..4 (RE5AimSpeedNames)
 
 	// FRAME RATE
 	bool bMotionFixes = true;

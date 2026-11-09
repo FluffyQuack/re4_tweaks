@@ -236,6 +236,15 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		re4t::cfg->bCircularRightStickCamera = ini.getBool("CONTROLLER", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera);
 		re4t::cfg->fCircularRightStickCameraTurn = ini.getFloat("CONTROLLER", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
 		re4t::cfg->fCircularRightStickCameraTurn = fmin(fmax(re4t::cfg->fCircularRightStickCameraTurn, 30.0f), 130.0f); // limit between 30 - 130
+		re4t::cfg->bRE5AimControls = ini.getBool("CONTROLLER", "RE5AimControls", re4t::cfg->bRE5AimControls);
+		{
+			std::string RE5AimSpeedStr = ini.getString("CONTROLLER", "RE5AimSpeed", "");
+			for (int i = 0; i < 5; i++)
+			{
+				if (_stricmp(RE5AimSpeedStr.c_str(), RE5AimSpeedNames[i]) == 0)
+					re4t::cfg->iRE5AimSpeed = i;
+			}
+		}
 		re4t::cfg->bAllowReloadWithoutAiming_controller = ini.getBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		re4t::cfg->bReloadWithoutZoom_controller = ini.getBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
 
@@ -698,6 +707,8 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setBool("CONTROLLER", "RightStickAimPitch", re4t::cfg->bRightStickAimPitch);
 		ini.setBool("CONTROLLER", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera);
 		ini.setFloat("CONTROLLER", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
+		ini.setBool("CONTROLLER", "RE5AimControls", re4t::cfg->bRE5AimControls);
+		ini.setString("CONTROLLER", "RE5AimSpeed", RE5AimSpeedNames[std::clamp(re4t::cfg->iRE5AimSpeed, 0, 4)]);
 		ini.setBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		ini.setBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
 
@@ -1060,6 +1071,8 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "RightStickAimPitch", re4t::cfg->bRightStickAimPitch ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "CircularRightStickCamera", re4t::cfg->bCircularRightStickCamera ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "CircularRightStickCameraTurn", re4t::cfg->fCircularRightStickCameraTurn);
+	spd::log()->info("| {:<30} | {:>15} |", "RE5AimControls", re4t::cfg->bRE5AimControls ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "RE5AimSpeed", RE5AimSpeedNames[std::clamp(re4t::cfg->iRE5AimSpeed, 0, 4)]);
 	spd::log()->info("| {:<30} | {:>15} |", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller ? "true" : "false");
 	spd::log()->info("+--------------------------------+-----------------+");

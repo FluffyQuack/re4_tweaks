@@ -103,6 +103,9 @@
     <ClCompile Include="RifleThirdPerson.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>
+    <ClCompile Include="RE5AimControls.cpp">
+      <Filter>dllmain</Filter>
+    </ClCompile>
     <ClCompile Include="Ragdoll.cpp">
       <Filter>dllmain</Filter>
     </ClCompile>

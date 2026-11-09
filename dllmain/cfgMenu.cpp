@@ -1260,6 +1260,29 @@ void cfgMenuRender()
 							re4t::cfg->HasUnsavedChanges = true;
 					}
 
+					// RE5AimControls
+					if ((OptionsFilter.PassFilter("RE5AimControls") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("RE5AimControls", &re4t::cfg->bRE5AimControls);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("Makes aiming with a controller work like Resident Evil 5: the aim turns at a steady speed, anything short of a full push of the stick moves it at under half speed for fine aiming, and a full push speeds up to full speed over a third of a second.");
+						ImGui::TextWrapped("Machine guns aim faster, as in RE5. Replaces ControllerSensitivity while aiming.");
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("Aiming Speed, as RE5's option of the same name (Slowest 0.8x, Slow 0.9x, Default, Fast 1.3x, Fastest 1.6x).");
+
+						ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Aiming Speed").x);
+						ImGui::BeginDisabled(!re4t::cfg->bRE5AimControls);
+						re4t::cfg->HasUnsavedChanges |= ImGui::Combo("Aiming Speed", &re4t::cfg->iRE5AimSpeed, RE5AimSpeedNames, 5);
+						ImGui::EndDisabled();
+						ImGui::PopItemWidth();
+					}
+
 					// AllowReloadWithoutAiming_controller
 					if ((OptionsFilter.PassFilter("AllowReloadWithoutAiming") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
 					{

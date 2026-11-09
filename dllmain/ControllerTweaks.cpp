@@ -17,6 +17,7 @@ float* fAnalogRX;
 float* fAnalogRY;
 
 int RawAnalogLX;
+int RawAnalogLY;
 
 // Pad 0's right stick before any deadzone (XINPUT_GAMEPAD sThumbRX/RY, up is positive). Used by CircularRightStickCamera.
 int16_t RawAnalogRX;
@@ -75,7 +76,7 @@ void re4t::init::ControllerTweaks()
 			void operator()(injector::reg_pack& regs)
 			{
 				RawAnalogLX = *(int16_t*)(regs.esi - 0x44);
-				//RawAnalogLY = *(int16_t*)(regs.esi - 0x42);
+				RawAnalogLY = *(int16_t*)(regs.esi - 0x42);
 				//RawAnalogRX = *(int16_t*)(regs.esi - 0x40);
 				//RawAnalogRY = *(int16_t*)(regs.esi - 0x3E);
 				// Code we overwrote

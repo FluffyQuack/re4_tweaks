@@ -111,6 +111,8 @@ void Init_Main()
 
 	re4t::init::RifleThirdPerson();
 
+	re4t::init::RE5AimControls();
+
 	re4t::init::Ragdoll();
 
 	if (re4t::cfg->bEnableModExpansion)
