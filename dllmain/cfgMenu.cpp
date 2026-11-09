@@ -1694,6 +1694,21 @@ void cfgMenuRender()
 						ImGui::TextWrapped("The rifle and semi-auto rifle aim in third person, like the other guns, while no scope is attached to them. With a scope attached they use the scope as usual.");
 					}
 
+					// EnableRagdolls
+					if ((OptionsFilter.PassFilter("EnableRagdolls") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("EnableRagdolls", &re4t::cfg->bEnableRagdolls);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+
+						ImGui::TextWrapped("Humanoid enemies (Ganados and the like) go limp as ragdolls when they die, pushed by the killing hit, instead of playing their death animations.");
+						ImGui::TextWrapped("Turning this off stops any ragdolls already out.");
+					}
+
 					// QTE options
 					if ((OptionsFilter.PassFilter("QTE disable automatic") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
 					{
