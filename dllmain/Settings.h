@@ -130,6 +130,7 @@ public:
 	bool bDisableAutomaticReload = false;
 	bool bRifleScreenShake = false;
 	bool bUnscopedRifleThirdPerson = false;
+	bool bEnableRagdolls = false;
 	bool bDisableQTE = false;
 	bool bAutomaticMashingQTE = false;
 	bool bAllowMatildaQuickturn = false;

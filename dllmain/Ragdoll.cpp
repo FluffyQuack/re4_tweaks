@@ -1,4 +1,5 @@
 #include "RagdollInternal.h"
+#include "Settings.h"
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/ConfigurationString.h>
 #include <Jolt/Core/Factory.h>
@@ -52,6 +53,9 @@
 // shadows stay with the body. During the dissolve (Die_Lost) the game sinks the root by 6 per update; the ragdoll
 // keeps simulating and is drawn that much lower, so it sinks with it. The ragdoll ends when the game hides the enemy,
 // brings it back (hp above 0) or frees it.
+//
+// The EnableRagdolls setting turns it all on and off (turning it off stops every ragdoll out; enemies are still tracked
+// while it's off, so one that died meanwhile doesn't ragdoll once it's back on).
 //
 // At most c_maxSimulated ragdolls simulate; past that the oldest freezes in place (no physics, same pose). One that's
 // still moving after c_maxAwakeTime (jittering on something) is put to sleep, keeping its collision.
@@ -1080,7 +1084,7 @@ namespace ragdoll
 				return;
 			Deferred& d = it->second;
 
-			if (model->guid_F8 != d.guid || t.hp > 0 || !g_enemyDeaths || !s_joltReady)
+			if (model->guid_F8 != d.guid || t.hp > 0 || !re4t::cfg->bEnableRagdolls || !g_enemyDeaths || !s_joltReady)
 			{
 				s_deferred.erase(it);
 				return;
@@ -1154,7 +1158,7 @@ namespace ragdoll
 			// Before the death check, so a kill deferred this update waits for the next
 			UpdateDeferred(model, t);
 
-			if (same && prev.hp > 0 && t.hp <= 0 && g_enemyDeaths && s_joltReady && !s_instances.count(model) && !s_pending.count(model)
+			if (same && prev.hp > 0 && t.hp <= 0 && re4t::cfg->bEnableRagdolls && g_enemyDeaths && s_joltReady && !s_instances.count(model) && !s_pending.count(model)
 				&& !s_deferred.count(model))
 				StartDeath(model, prev);
 
@@ -1181,6 +1185,17 @@ namespace ragdoll
 
 			if (em10)
 				TrackEm10(model);
+
+			if (!re4t::cfg->bEnableRagdolls)
+			{
+				if (!s_instances.empty() || !s_pending.empty() || !s_deferred.empty())
+				{
+					spd::log()->info("ragdoll -> turned off: stopping {} ragdolls", s_instances.size());
+					StopEverything();
+				}
+				s_haveLastUpdateTime = false;
+				return;
+			}
 
 			if (s_instances.empty() && s_pending.empty() && s_deferred.empty())
 			{
