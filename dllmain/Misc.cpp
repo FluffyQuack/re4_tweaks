@@ -458,6 +458,25 @@ BOOL joyKamae_Hook()
 	return ret;
 }
 
+// LookWhileReloading: cPlayer::isKamae counts the reload (and the bolt-action rifle's bolt cycle) as aiming, so the camera
+// stays on the aim even with the aim button let go. With this on (controller), those don't count as aiming while the aim
+// button is up, so the camera is the normal one and the right stick looks around (as PlReloadDirect, below, already does
+// for a reload started without aiming).
+int(__fastcall* cPlayer__isKamae_orig)(cModel* pl) = nullptr;
+int __fastcall cPlayer__isKamae_hook(cModel* pl)
+{
+	int ret = cPlayer__isKamae_orig(pl);
+	if (ret && re4t::cfg->bLookWhileReloading && isController() && pl->r_no_1_FD == 6 &&
+		(Key_btn_on() & (uint64_t)KEY_BTN::KEY_KAMAE) == 0)
+	{
+		const bool reload = pl->r_no_2_FE == 4;
+		const bool boltCycle = pl->r_no_2_FE == 2 && (pl->r_no_3_FF == 2 || pl->r_no_3_FF == 3) && GlobalPtr()->weapon_no_4FC0 == 9;
+		if (reload || boltCycle)
+			return 0;
+	}
+	return ret;
+}
+
 bool* PlReloadDirect;
 bool (*cPlayer__keyReload_orig)();
 bool cPlayer__keyReload_hook()
@@ -579,6 +598,23 @@ void re4t::init::Misc()
 		// Grab a pointer to cActionButton's "m_active_flag".
 		pattern = hook::pattern("80 3D ? ? ? ? ? 75 ? 6A ? E8 ? ? ? ? 83 C4 ? EB");
 		ActBtn_m_active_flag_42 = (bool*)*pattern.count(1).get(0).get<uint32_t*>(2);
+	}
+
+	// LookWhileReloading: cPlayer::isKamae, through a trampoline (its first instruction, mov al, [ecx + 0xFD], is 6 bytes)
+	{
+		auto pattern = hook::pattern("8A 81 FD 00 00 00 3C 06 75 3A 8A 81 FE 00 00 00 84 C0 75 15");
+		uint8_t* tramp = pattern.size() == 1 ? static_cast<uint8_t*>(VirtualAlloc(nullptr, 16, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) : nullptr;
+		if (tramp)
+		{
+			uint8_t* fn = pattern.get_first<uint8_t>();
+			memcpy(tramp, fn, 6);
+			tramp[6] = 0xE9;
+			*reinterpret_cast<int32_t*>(tramp + 7) = int32_t(fn + 6 - (tramp + 11));
+			cPlayer__isKamae_orig = reinterpret_cast<decltype(cPlayer__isKamae_orig)>(tramp);
+			InjectHook(fn, cPlayer__isKamae_hook, HookType::Jump);
+		}
+		else
+			spd::log()->error("{} -> cPlayer::isKamae not found, LookWhileReloading unavailable", __FUNCTION__);
 	}
 
 	// Hook SsTermMain MDT reading functions so we can load loose file instead

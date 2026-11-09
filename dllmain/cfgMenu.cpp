@@ -1323,6 +1323,20 @@ void cfgMenuRender()
 						ImGui::TextWrapped("Not usually recomended, since the zooming in and out masks some animation quirks when the reload ends.");
 					}
 
+					// LookWhileReloading
+					if ((OptionsFilter.PassFilter("LookWhileReloading") && OptionsFilter.IsActive()) || !OptionsFilter.IsActive())
+					{
+						ImGui_ColumnSwitch();
+
+						re4t::cfg->HasUnsavedChanges |= ImGui::Checkbox("LookWhileReloading", &re4t::cfg->bLookWhileReloading);
+
+						ImGui_ItemSeparator();
+
+						ImGui::Dummy(ImVec2(10, 10 * esHook._cur_monitor_dpi));
+						ImGui::TextWrapped("Letting go of the aim button while reloading, or during the bolt-action rifle's bolt cycle, lets you look around with the right stick, as when standing or moving.");
+						ImGui::TextWrapped("Holding aim again goes back to the aim camera.");
+					}
+
 					ImGui_ColumnFinish();
 					ImGui::EndTable();
 				}

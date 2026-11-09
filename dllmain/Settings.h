@@ -103,6 +103,7 @@ public:
 	float fXinputDeadzone = 0.4f;
 	bool bAllowReloadWithoutAiming_controller = false;
 	bool bReloadWithoutZoom_controller = false;
+	bool bLookWhileReloading = false;
 	bool bSmoothAnalogTurning = false;
 	bool bRightStickAimPitch = false;
 	bool bCircularRightStickCamera = false;

@@ -249,6 +249,7 @@ void ReadSettingsIni(std::wstring ini_path, setType type)
 		}
 		re4t::cfg->bAllowReloadWithoutAiming_controller = ini.getBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		re4t::cfg->bReloadWithoutZoom_controller = ini.getBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
+		re4t::cfg->bLookWhileReloading = ini.getBool("CONTROLLER", "LookWhileReloading", re4t::cfg->bLookWhileReloading);
 
 		// FRAME RATE
 		re4t::cfg->bMotionFixes = ini.getBool("FRAME RATE", "MotionFixes", re4t::cfg->bMotionFixes);
@@ -714,6 +715,7 @@ void re4t_cfg::WriteSettings(bool trainerOnly)
 		ini.setFloat("CONTROLLER", "RE5AimDeadzone", re4t::cfg->fRE5AimDeadzone);
 		ini.setBool("CONTROLLER", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller);
 		ini.setBool("CONTROLLER", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller);
+		ini.setBool("CONTROLLER", "LookWhileReloading", re4t::cfg->bLookWhileReloading);
 
 		// FRAME RATE
 		ini.setBool("FRAME RATE", "MotionFixes", re4t::cfg->bMotionFixes);
@@ -1079,6 +1081,7 @@ void re4t_cfg::LogSettings()
 	spd::log()->info("| {:<30} | {:>15} |", "RE5AimDeadzone", re4t::cfg->fRE5AimDeadzone);
 	spd::log()->info("| {:<30} | {:>15} |", "AllowReloadWithoutAiming", re4t::cfg->bAllowReloadWithoutAiming_controller ? "true" : "false");
 	spd::log()->info("| {:<30} | {:>15} |", "ReloadWithoutZoom", re4t::cfg->bReloadWithoutZoom_controller ? "true" : "false");
+	spd::log()->info("| {:<30} | {:>15} |", "LookWhileReloading", re4t::cfg->bLookWhileReloading ? "true" : "false");
 	spd::log()->info("+--------------------------------+-----------------+");
 
 	// FRAME RATE
